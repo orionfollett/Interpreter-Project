@@ -47,13 +47,25 @@
       [(eq? (get-operation expression) '/) (quotient (M_integer(get-first-operand expression)) (M_integer(get-second-operand expression)))]
       [(eq? (get-operation expression) '%) (remainder (M_integer(get-first-operand expression)) (M_integer(get-second-operand expression)))])))
 
+
+;M-Bool
+;evaluates a boolean expression
+
+;comparison -> evaluates a comparison statement with numbers
+
+
 ;M-State update functions
 
-;checks to make sure var name is unique, etc etc... need to flesh out more
+;checks to make sure var name is unique, valid (cant be if, while, return or a math symbol) etc etc... need to flesh out more
 ;(define AddBinding
  ; (lambda (var, val, M-State)
     
   ;  ))
+
+;RemoveBinding
+;LookupValue -> enter a variable name, returns the value of that variable
+
+
 
 
 
