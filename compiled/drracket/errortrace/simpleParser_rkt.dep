@@ -1,0 +1,1 @@
+("7.9" racket ("e0e83ce077a7725b80d5d28c796e973faa4fa1dd" . "caecb3f7707272f87cbfeb29640610b8d5cca7bb") #"C:\\Users\\orion\\Desktop\\Orion Programming\\Programming Language Concepts\\InterpretorProject\\lex.rkt" (collects #"errortrace" #"errortrace-key.rkt") (collects #"racket" #"main.rkt") (collects #"racket" #"runtime-config.rkt"))
