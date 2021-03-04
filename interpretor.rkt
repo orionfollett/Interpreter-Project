@@ -66,6 +66,18 @@
 
 ;interpretor should probably loop using continuation passing style rather than regular recursion of the cdr of the list
 
+
+;step-cps is UNFINISHED
+;step-cps takes program: the parsed program, M-state: a list of bindings, and return a continuation passing function
+;it is used to step through each line of the program
+(define step-cps
+  (lambda (program M-state return)
+    (cond
+      [(null? program) (return program)]
+      [else (return program)]
+    )))
+
+
 ;Main Interpreter function
 
 ;Accepts a filename ex: (interpret "testProgram.txt")
@@ -73,12 +85,17 @@
 
 (define interpret
   (lambda (filename)
-    
-    (parser filename)
-
-    
-
+    (step-cps (parser filename) '() (lambda(v) v))
     ))
 
 ;Quick Run:
 ;(interpret "testProgram.txt")
+
+
+;cps style example
+(define factorial-cps
+  (lambda (x return)
+    (if (zero? x)
+        (return 1)
+        (factorial-cps (- x 1) (lambda (v) (return (* x v))))
+        )))
