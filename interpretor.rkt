@@ -47,6 +47,14 @@
       [(eq? (get-operation expression) '/) (quotient (M_integer(get-first-operand expression)) (M_integer(get-second-operand expression)))]
       [(eq? (get-operation expression) '%) (remainder (M_integer(get-first-operand expression)) (M_integer(get-second-operand expression)))])))
 
+;M-State update functions
+
+;checks to make sure var name is unique, etc etc... need to flesh out more
+;(define AddBinding
+ ; (lambda (var, val, M-State)
+    
+  ;  ))
+
 
 
 ;parser filename gives a list where each sublist is a statement
@@ -76,6 +84,8 @@
       [(null? program) (return program)]
       [else (return program)]
     )))
+
+
 
 
 ;Main Interpreter function
