@@ -75,6 +75,18 @@
       [(bool-operation? (car expression)) #t]
       [else (contains-bool (cdr expression))])))
 
+;var? -> returns true if x is not a keyword (true or false), operation, or number 
+(define var?
+  (lambda (x)
+     (not (or (operation? x) (eq? x 'true)  (eq? x 'false) (number? x)))
+    ))
+
+
+;bool-literal? -> takes an atom, returns #t if it is a valid bool literal
+(define bool-literal?
+  (lambda (x)
+    (or (eq? x 'true) (eq? x 'false))
+    ))
 
 ;*******************************HELPER FUNCTIONS FOR M_INTEGER**************************
 
@@ -138,7 +150,7 @@
   (lambda (fexpression)
     (cond
       [(null? fexpression) fexpression]
-      [(or (number? (car fexpression)) (operation? (car fexpression))) (MV_ListOfVars (cdr fexpression))]
+      [(not (var? (car fexpression))) (MV_ListOfVars (cdr fexpression))]
       [else (cons (car fexpression) (MV_ListOfVars (cdr fexpression)))])))
 
 ;MV_ConvertVarToVal* -> takes M-State, expression: an integer expression that may have variables in it, and varList: a list of all the variables in the expression
@@ -154,13 +166,19 @@
 ;MV_NoProcessingNeeded - takes in val, returns true if it is a value, false if it needs further processing
 (define MV_NoProcessingNeeded
   (lambda (val)
-    (or (number? val) (eq? val 'null) (eq? val #t) (eq? val #f))
+    (or (number? val) (eq? val 'null) (eq? val 'true) (eq? val 'false))
     ))
 
-;MV_IsBoolExpression
+;MV_IsBoolExpression - takes a val, returns true if it is an expression with bool operators
 (define MV_IsBoolExpression
   (lambda (val)
     (and (list? val) (contains-bool (flatten val)))
+    ))
+
+;MV_ReturnBoolLiteral - takes val that is either 'true or 'false, returns #t if it is 'true, #f is it is 'false
+(define MV_ReturnBoolLiteral
+  (lambda (val)
+      (eq? val 'true)
     ))
 
 ;M-Value -> takes in M-State and a partial statement, ultimately resolves the partial statement down to a value and returns that value could be true, false, or a number
@@ -170,9 +188,10 @@
       [(MV_NoProcessingNeeded val) val]
       [(MV_IsBoolExpression val) (error "No M-Value for boolean expressions yet")] ;potential mix of integer and comparison operators
       [(list? val) (M-Integer (MV_ConvertVarToVal* M-State val (MV_ListOfVars (flatten val))))] ;had no comparison operators but still is a list, Integer expression only
+      [(bool-literal? val) (MV_ReturnBoolLiteral val)]
       [(IsVarUndeclared M-State val) (error val "Undeclared variable!")] ;undeclared variable
       [else (LookupValue M-State val)]))) ;declared variable that needs to be resolved to a value
-
+      
 ;*************************M-State Helper Functions**************************
 
 ;M-State format: '((return returnval)(x 0)(y 3)(varname value)...) contains all declared variables
