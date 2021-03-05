@@ -1,14 +1,26 @@
 #lang racket
 (require "simpleParser.rkt")
 
+;Orion Follett
+;Prithik Karthikeyan
 
+;General Idea:
+;parser filename gives a list where each sublist is a statement
+;there are five different types of statements
 
+;variable declaration	(var variable) or (var variable value)
+;assignment	(= variable expression)
+;return	(return expression)
+;if statement	(if conditional then-statement optional-else-statement)
+;while statement	(while conditional body-statement)
 
+;interpret will step through each statement, execute what needs to get done based on that line, and then interpret the rest of the code
 
+;There may need to be an M-state list that is passed nearly everywhere, it will have all variable bindings so '((x 1) (y 3) ...)
 
-;Abstractions
+;return statement indicates end of the program
 
-;HELPER FUNCTIONS FOR M_INTEGER
+;*******************************HELPER FUNCTIONS FOR M_INTEGER**************************
 ;get-operation accepts a list in prefix notation
 ;Extracts the operation from the expression
 ;Ex: (get-operation '(+ 1 2)) -> +
@@ -24,7 +36,6 @@
   (lambda (expression)
     (car (cdr expression))
     ))
-
 
 ;get-second-operand accepts a list in prefix notation
 ;Extracts the first operand from the expression
@@ -54,78 +65,132 @@
 ;comparison -> evaluates a comparison statement with numbers
 
 
+;***********************************M-Value Helper Functions*****************************************
+
+
+;M-Value -> takes in M-State and a partial statement, ultimately resolves the partial statement down to a value and returns that value could be true, false, or a number
+(define M-Value
+  (lambda (M-State val)
+    (cond
+      [(or (number? val) (eq? val #t) (eq? val #f)) val]
+      [(list? val) (error val "No M-Value for lists yet")]
+      [(IsVarUndeclared M-State val) (error val "Undeclared variable!")]
+      [else (LookupValue M-State val)]
+)))
+
+
+;*************************M-State Helper Functions**************************
 
 ;M-State format: '((return returnval)(x 0)(y 3)(varname value)...) contains all declared variables
-;M-State update functions
-
-;checks to make sure var name is unique, valid (cant be if, while, return or a math symbol) etc etc... need to flesh out more
-;(define AddBinding
- ; (lambda (var, val, M-State)
-    
-  ;  ))
-
-;RemoveBinding
 ;LookupValue -> enter a variable name, returns the value of that variable
-;IsDeclared
 
-
-
-
-
-;parser filename gives a list where each sublist is a statement
-;there are five different types of statements
-
-;variable declaration	(var variable) or (var variable value)
-;assignment	(= variable expression)
-;return	(return expression)
-;if statement	(if conditional then-statement optional-else-statement)
-;while statement	(while conditional body-statement)
-
-;interpret will step through each statement, execute what needs to get done based on that line, and then interpret the rest of the code
-
-;There may need to be an M-state list that is passed nearly everywhere, it will have all variable bindings so '((x 1) (y 3) ...)
-
-;return statement indicates end of the program
-
-;interpretor should probably loop using continuation passing style rather than regular recursion of the cdr of the list
-
-
-
-
-;****************************Variable Declaration Functions******************************************
-
-;GetVarName -> takes in a variable declaration statement, returns the variable name
-(define GetVarName
-  (lambda (statement)
-    (car (cdr statement))))
 
 ;GetFirstBinding -> takes in M-State, returns the first binding
 (define GetFirstBinding
   (lambda (M-State)
     (car M-State)))
 
-;GetFirstBindingName -> takes in M-State, returns first variable of first binding
+;GetFirstBindingName -> takes in M-State, returns first variable name of first binding
 (define GetFirstBindingName
   (lambda (M-State)
     (car (GetFirstBinding M-State))))
 
 
+;GetFirstBindingValue -> takes in M-State, returns first variable value of first binding
+(define GetFirstBindingValue
+  (lambda (M-State)
+    (car (cdr (GetFirstBinding M-State)))))
+
+
 ;IsNameUnused -> takes in M-State and variable name, makes sure name is not in the list
-(define IsNameUnused
+(define IsVarUndeclared
   (lambda (M-State name)
     (cond
       [(null? M-State) #t]
       [(eq? (GetFirstBindingName M-State) name) #f]
-      [else (IsNameUnused (cdr M-State) name)])))
+      [else (IsVarUndeclared (cdr M-State) name)])))
+
+;AddNewBinding -> takes in M-State, variable name, variable value, returns M-State with new binding
+(define AddNewBinding
+  (lambda (M-State varName varVal)
+    (cons (list varName (M-Value M-State varVal)) M-State)
+    ))
+
+;RemoveBinding -> takes in M-State, variable name returns M-State without that variable
+;If the binding doesnt exist, M-State is unchanged
+(define RemoveBinding
+  (lambda (M-State varName)
+    (cond
+     [(null? M-State) M-State]
+     [(eq? (GetFirstBindingName M-State) varName) (cdr M-State)]
+     [else (cons (GetFirstBinding M-State) (RemoveBinding (cdr M-State) varName))]
+    )))
+
+;ChangeBinding -> takes in M-State, variable name, new variable value, returns M-State with old variable value replaced by new variable value
+;If the binding doesnt exist, it creates a new one
+(define ChangeBinding
+  (lambda (M-State varName varVal)
+    (AddNewBinding (RemoveBinding M-State varName) varName varVal)
+    ))
+
+;LookupValue -> takes in M-State, variable name, returns the value associated with that variable
+;returns 'null if there is no value associated with that variable
+(define LookupValue
+  (lambda (M-State varName)
+    (cond
+      [(null? M-State) 'null]
+      [(eq? (GetFirstBindingName M-State) varName) (GetFirstBindingValue M-State)]
+      [else (LookupValue (cdr M-State) varName)])))
+
+
+;****************************Variable Declaration Functions******************************************
+;Variable declaration helper functions specific to variable declaration statements are marked VD_
+
+;GetVarName -> takes in a variable declaration statement, returns the variable name
+(define VD_GetVarName
+  (lambda (statement)
+    (car (cdr statement))))
+
+;GetVarValue -> takes in a variable declaration statement, returns the value it is assigned to, if there is no value, return 'null for the value
+(define VD_GetVarValue
+  (lambda (statement)
+    (cond
+      [(null? (cdr (cdr statement))) 'null]
+      [else (car (cdr (cdr statement)))])))
 
 ;HandleVarDec takes in M-State and variable declaration statement, returns updated m state
 (define HandleVarDec
   (lambda (M-State statement)
     (cond
-      [(IsNameUnused (GetVarName statement)) (AddBinding M-State)]
-      []
+      [(IsVarUndeclared M-State (VD_GetVarName statement)) (AddNewBinding M-State (VD_GetVarName statement) (VD_GetVarValue statement))]
+      [else (error "Error: " (VD_GetVarName statement) "variable already declared")]
     )))
 
+
+;****************************Assignment Statement Functions******************************************
+
+;AS_ indicated an assignment statement helper function, these should only be used with assignment statements
+
+;AS_GetVarName -> takes in an assignment statement, returns the variable name being assigned
+(define AS_GetVarName
+  (lambda (statement)
+    (car (cdr statement))
+    ))
+
+;AS_GetVarVal -> takes in an assignment statement, returns the variable value in the statement
+;VarVal could be another variable, a math statement, or 
+(define AS_GetVarVal
+  (lambda (statement)
+    (car (cdr (cdr statement)))
+    ))
+  
+;HandleAssign -> Takes in M-State and an assignment statement, returns updated M-State
+(define HandleAssign
+  (lambda (M-State statement)
+    (cond
+      [(IsVarUndeclared M-State (AS_GetVarName statement)) (error (AS_GetVarName statement) "Assignment before declaration!")]
+      [else (ChangeBinding M-State (AS_GetVarName statement) (AS_GetVarVal statement))]
+      )))
 
 ;**************************parse tree step through helper functions: ***********************************
 
@@ -136,12 +201,20 @@
      [car program]
      program)))
 
-;IsVarDec takes in a single statement, returns true or false depending on if it is a variable decalaration or not
-(define IsVarDec
+;IsVarDecStatement takes in a single statement, returns true or false depending on if it is a variable decalaration or not
+(define IsVarDecStatement
   (lambda (statement)
     (if (eq? (car statement) 'var)
       #t
       #f)))
+
+
+;IsAssignStatement takes in a single statement, returns true or false depending on if it is an assignment
+(define IsAssignStatement
+  (lambda (statement)
+    (if (eq? (car statement) '=)
+        #t
+        #f)))
 
 
 ;step-through is UNFINISHED
@@ -150,10 +223,10 @@
 (define step-through
   (lambda (program M-State)
     (cond
-      [(null? program) (program)]
-      [(IsVarDec (GetFirstStatement program)) (HandleVarDec M-State (GetFirstStatement program))]
-      [else program]
-    )))
+      [(null? program) M-State]
+      [(IsVarDecStatement (GetFirstStatement program)) (step-through (cdr program) (HandleVarDec M-State (GetFirstStatement program)))]
+      [(IsAssignStatement (GetFirstStatement program)) (step-through (cdr program) (HandleAssign M-State (GetFirstStatement program)))]
+      [else M-State])))
 
 
 ;Main Interpreter function
