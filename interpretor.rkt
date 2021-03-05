@@ -46,7 +46,23 @@
 ;takes an atom, returns true if it is an integer operation
 (define int-operation?
   (lambda (x)
-    (if (or (eq? x '+) (eq? x '-) (eq? x '/) (eq? x '*) (eq? x'%))
+    (if (or (eq? x '+) (eq? x '-) (eq? x '/) (eq? x '*) (eq? x '%))
+        #t
+        #f
+    )))
+
+;takes an atom, returns true if it is a bool operation
+(define bool-operation?
+  (lambda (x)
+    (if (or (eq? x '>) (eq? x '<) (eq? x '==) (eq? x '<=) (eq? x '>=) (eq? x '!=) (eq? x '&&) (eq? x '||) (eq? x '!))
+        #t
+        #f
+    )))
+
+;takes an atom, returns true if it is an integer or a boolean operation
+(define operation?
+  (lambda (x)
+    (if (or (bool-operation? x) (int-operation? x))
         #t
         #f
     )))
@@ -97,30 +113,28 @@
       [(eq? (MI_GetOperation expression) '/) (quotient (M-Integer(MI_GetFirstOperand expression)) (M-Integer(MI_GetSecondOperand expression)))]
       [(eq? (MI_GetOperation expression) '%) (remainder (M-Integer(MI_GetFirstOperand expression)) (M-Integer(MI_GetSecondOperand expression)))])))
 
-
 ;M-Bool
-;evaluates a boolean expression
-
-;comparison -> evaluates a comparison statement with numbers
+;evaluates a boolean expression that has comparison operators, and logical operators
 
 
 ;***********************************M-Value Helper Functions*****************************************
 
 ;there are two types of expressions, boolean expressions, and integer expressions
-;MV_IsBoolExpression -> takes in an expression, if the expression has any of the boolean operators in it return true, else return false
+;MV_IsBoolExpression -> takes in a flattened expression, if the expression has any of the boolean operators in it return true, else return false
 (define MV_IsBoolExpression
-  (lambda expression
-    #f
-    ))
+  (lambda (expression)
+    (cond
+      [(null? expression) #f]
+      [(bool-operation? (car expression)) #t]
+      [else (MV_IsBoolExpression (cdr expression))])))
 
 ;MV_ListOfVars -> takes fexpression: a flattened integer expression that may have variables in it, returns a flattened list of all the variables within that expression
 (define MV_ListOfVars
   (lambda (fexpression)
     (cond
       [(null? fexpression) fexpression]
-      [(or (number? (car fexpression)) (int-operation? (car fexpression))) (MV_ListOfVars (cdr fexpression))]
-      [else (cons (car fexpression) (MV_ListOfVars (cdr fexpression)))]
-    )))
+      [(or (number? (car fexpression)) (operation? (car fexpression))) (MV_ListOfVars (cdr fexpression))]
+      [else (cons (car fexpression) (MV_ListOfVars (cdr fexpression)))])))
 
 ;MV_ConvertVarToVal* -> takes M-State, expression: an integer expression that may have variables in it, and varList: a list of all the variables in the expression
 ;converts all the variables into values and returns the list
@@ -136,12 +150,10 @@
   (lambda (M-State val)
     (cond
       [(or (number? val) (eq? val 'null) (eq? val #t) (eq? val #f)) val]
-      [(and (list? val) (MV_IsBoolExpression val)) (error val "No M-Value for boolean expressions yet")] ;potential mix of integer and comparison operators
+      [(and (list? val) (MV_IsBoolExpression (flatten val))) (error val "No M-Value for boolean expressions yet")] ;potential mix of integer and comparison operators
       [(list? val) (M-Integer (MV_ConvertVarToVal* M-State val (MV_ListOfVars (flatten val))))] ;Integer expression only
       [(IsVarUndeclared M-State val) (error val "Undeclared variable!")] ;undeclared variable
-      [else (LookupValue M-State val)]
-)))
-
+      [else (LookupValue M-State val)])))
 
 ;*************************M-State Helper Functions**************************
 
@@ -159,12 +171,10 @@
   (lambda (M-State)
     (car (GetFirstBinding M-State))))
 
-
 ;GetFirstBindingValue -> takes in M-State, returns first variable value of first binding
 (define GetFirstBindingValue
   (lambda (M-State)
     (car (cdr (GetFirstBinding M-State)))))
-
 
 ;IsNameUnused -> takes in M-State and variable name, makes sure name is not in the list
 (define IsVarUndeclared
@@ -177,8 +187,7 @@
 ;AddNewBinding -> takes in M-State, variable name, variable value, returns M-State with new binding
 (define AddNewBinding
   (lambda (M-State varName varVal)
-    (cons (list varName (M-Value M-State varVal)) M-State)
-    ))
+    (cons (list varName (M-Value M-State varVal)) M-State)))
 
 ;RemoveBinding -> takes in M-State, variable name returns M-State without that variable
 ;If the binding doesnt exist, M-State is unchanged
@@ -187,15 +196,13 @@
     (cond
      [(null? M-State) M-State]
      [(eq? (GetFirstBindingName M-State) varName) (cdr M-State)]
-     [else (cons (GetFirstBinding M-State) (RemoveBinding (cdr M-State) varName))]
-    )))
+     [else (cons (GetFirstBinding M-State) (RemoveBinding (cdr M-State) varName))])))
 
 ;ChangeBinding -> takes in M-State, variable name, new variable value, returns M-State with old variable value replaced by new variable value
 ;If the binding doesnt exist, it creates a new one
 (define ChangeBinding
   (lambda (M-State varName varVal)
-    (AddNewBinding (RemoveBinding M-State varName) varName varVal)
-    ))
+    (AddNewBinding (RemoveBinding M-State varName) varName varVal)))
 
 ;LookupValue -> takes in M-State, variable name, returns the value associated with that variable
 ;returns 'null if there is no value associated with that variable
@@ -230,7 +237,6 @@
       [else (error "Error: " (VD_GetVarName statement) "variable already declared")]
     )))
 
-
 ;****************************Assignment Statement Functions******************************************
 
 ;AS_ indicated an assignment statement helper function, these should only be used with assignment statements
@@ -238,23 +244,20 @@
 ;AS_GetVarName -> takes in an assignment statement, returns the variable name being assigned
 (define AS_GetVarName
   (lambda (statement)
-    (car (cdr statement))
-    ))
+    (car (cdr statement))))
 
 ;AS_GetVarVal -> takes in an assignment statement, returns the variable value in the statement
 ;VarVal could be another variable, a math statement, or 
 (define AS_GetVarVal
   (lambda (statement)
-    (car (cdr (cdr statement)))
-    ))
+    (car (cdr (cdr statement)))))
   
 ;HandleAssign -> Takes in M-State and an assignment statement, returns updated M-State
 (define HandleAssign
   (lambda (M-State statement)
     (cond
       [(IsVarUndeclared M-State (AS_GetVarName statement)) (error (AS_GetVarName statement) "Assignment before declaration!")]
-      [else (ChangeBinding M-State (AS_GetVarName statement) (AS_GetVarVal statement))]
-      )))
+      [else (ChangeBinding M-State (AS_GetVarName statement) (AS_GetVarVal statement))])))
 
 ;**************************parse tree step through helper functions: ***********************************
 
@@ -300,8 +303,7 @@
 
 (define interpret
   (lambda (filename)
-    (step-through (parser filename) '())
-    ))
+    (step-through (parser filename) '())))
 
 ;Quick Run:
 (interpret "testProgram.txt")
