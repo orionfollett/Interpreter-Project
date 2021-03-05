@@ -1,3 +1,1 @@
-var x = 10;
-var y = 20;
-var z = x * x > y;
+var x = True;
