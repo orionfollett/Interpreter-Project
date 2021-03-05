@@ -67,6 +67,15 @@
         #f
     )))
 
+;contains-bool -> takes in a flattened expression, if the expression has any of the boolean operators in it return true, else return false
+(define contains-bool
+  (lambda (expression)
+    (cond
+      [(null? expression) #f]
+      [(bool-operation? (car expression)) #t]
+      [else (contains-bool (cdr expression))])))
+
+
 ;*******************************HELPER FUNCTIONS FOR M_INTEGER**************************
 
 ;MI_GetOperation means it is a helper function only to be used with M-Integer
@@ -111,7 +120,8 @@
       [(eq? (MI_GetOperation expression) '-) (- (M-Integer(MI_GetFirstOperand expression)) (M-Integer(MI_GetSecondOperand expression)))]
       [(eq? (MI_GetOperation expression) '*) (* (M-Integer(MI_GetFirstOperand expression)) (M-Integer(MI_GetSecondOperand expression)))]
       [(eq? (MI_GetOperation expression) '/) (quotient (M-Integer(MI_GetFirstOperand expression)) (M-Integer(MI_GetSecondOperand expression)))]
-      [(eq? (MI_GetOperation expression) '%) (remainder (M-Integer(MI_GetFirstOperand expression)) (M-Integer(MI_GetSecondOperand expression)))])))
+      [(eq? (MI_GetOperation expression) '%) (remainder (M-Integer(MI_GetFirstOperand expression)) (M-Integer(MI_GetSecondOperand expression)))]
+      [else (error "non number tried to use arithmetic operators")])))
 
 ;M-Bool
 ;evaluates a boolean expression that has comparison operators, and logical operators
@@ -122,13 +132,6 @@
 ;***********************************M-Value Helper Functions*****************************************
 
 ;there are two types of expressions, boolean expressions, and integer expressions
-;MV_IsBoolExpression -> takes in a flattened expression, if the expression has any of the boolean operators in it return true, else return false
-(define MV_IsBoolExpression
-  (lambda (expression)
-    (cond
-      [(null? expression) #f]
-      [(bool-operation? (car expression)) #t]
-      [else (MV_IsBoolExpression (cdr expression))])))
 
 ;MV_ListOfVars -> takes fexpression: a flattened integer expression that may have variables in it, returns a flattened list of all the variables within that expression
 (define MV_ListOfVars
@@ -147,21 +150,32 @@
       [(IsVarUndeclared M-State (car varList)) (error expression " variable not defined in an expression variable name: " (car varList))]
       [else (MV_ConvertVarToVal* M-State (replaceall* (car varList) (LookupValue M-State (car varList)) expression) (cdr varList))])))
 
+
+;MV_NoProcessingNeeded - takes in val, returns true if it is a value, false if it needs further processing
+(define MV_NoProcessingNeeded
+  (lambda (val)
+    (or (number? val) (eq? val 'null) (eq? val #t) (eq? val #f))
+    ))
+
+;MV_IsBoolExpression
+(define MV_IsBoolExpression
+  (lambda (val)
+    (and (list? val) (contains-bool (flatten val)))
+    ))
+
 ;M-Value -> takes in M-State and a partial statement, ultimately resolves the partial statement down to a value and returns that value could be true, false, or a number
 (define M-Value
   (lambda (M-State val)
     (cond
-      [(or (number? val) (eq? val 'null) (eq? val #t) (eq? val #f)) val]
-      [(and (list? val) (MV_IsBoolExpression (flatten val))) (error val "No M-Value for boolean expressions yet")] ;potential mix of integer and comparison operators
-      [(list? val) (M-Integer (MV_ConvertVarToVal* M-State val (MV_ListOfVars (flatten val))))] ;Integer expression only
+      [(MV_NoProcessingNeeded val) val]
+      [(MV_IsBoolExpression val) (error "No M-Value for boolean expressions yet")] ;potential mix of integer and comparison operators
+      [(list? val) (M-Integer (MV_ConvertVarToVal* M-State val (MV_ListOfVars (flatten val))))] ;had no comparison operators but still is a list, Integer expression only
       [(IsVarUndeclared M-State val) (error val "Undeclared variable!")] ;undeclared variable
-      [else (LookupValue M-State val)])))
+      [else (LookupValue M-State val)]))) ;declared variable that needs to be resolved to a value
 
 ;*************************M-State Helper Functions**************************
 
 ;M-State format: '((return returnval)(x 0)(y 3)(varname value)...) contains all declared variables
-;LookupValue -> enter a variable name, returns the value of that variable
-
 
 ;GetFirstBinding -> takes in M-State, returns the first binding
 (define GetFirstBinding
@@ -241,7 +255,7 @@
 
 ;****************************Assignment Statement Functions******************************************
 
-;AS_ indicated an assignment statement helper function, these should only be used with assignment statements
+;AS_ indicates an assignment statement helper function, these should only be used with assignment statements
 
 ;AS_GetVarName -> takes in an assignment statement, returns the variable name being assigned
 (define AS_GetVarName
