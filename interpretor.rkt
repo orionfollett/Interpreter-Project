@@ -20,6 +20,37 @@
 
 ;return statement indicates end of the program
 
+
+
+;********************************General Helper Functions********************************
+
+;helper function that flattens a list of lists to just a normal list
+(define flatten
+  (lambda (lis)
+  (cond
+    [(null? lis) '()]
+    [(pair? lis) (append (flatten (car lis)) (flatten (cdr lis)))]
+    [else (list lis)]
+    )))
+
+;takes a list of lists, replaces all elements equal to t with r, returns new list
+(define replaceall*
+  (lambda (t r lis)
+    (cond
+      [(null? lis) '()]
+      [(pair? (car lis)) (cons (replaceall* t r (car lis)) (replaceall* t r (cdr lis)))]
+      [(eq? t (car lis)) (cons r (replaceall* t r (cdr lis)))]
+      [else (cons (car lis) (replaceall* t r (cdr lis)))]
+      )))
+
+;takes an atom, returns true if it is an integer operation
+(define int-operation?
+  (lambda (x)
+    (if (or (eq? x '+) (eq? x '-) (eq? x '/) (eq? x '*) (eq? x'%))
+        #t
+        #f
+    )))
+
 ;*******************************HELPER FUNCTIONS FOR M_INTEGER**************************
 
 ;MI_GetOperation means it is a helper function only to be used with M-Integer
@@ -75,15 +106,39 @@
 
 ;***********************************M-Value Helper Functions*****************************************
 
+;there are two types of expressions, boolean expressions, and integer expressions
+;MV_IsBoolExpression -> takes in an expression, if the expression has any of the boolean operators in it return true, else return false
+(define MV_IsBoolExpression
+  (lambda expression
+    #f
+    ))
 
+;MV_ListOfVars -> takes fexpression: a flattened integer expression that may have variables in it, returns a flattened list of all the variables within that expression
+(define MV_ListOfVars
+  (lambda (fexpression)
+    (cond
+      [(null? fexpression) fexpression]
+      [(or (number? (car fexpression)) (int-operation? (car fexpression))) (MV_ListOfVars (cdr fexpression))]
+      [else (cons (car fexpression) (MV_ListOfVars (cdr fexpression)))]
+    )))
+
+;MV_ConvertVarToVal* -> takes M-State, expression: an integer expression that may have variables in it, and varList: a list of all the variables in the expression
+;converts all the variables into values and returns the list
+(define MV_ConvertVarToVal*
+  (lambda (M-State expression varList)
+    (cond
+      [(null? varList) expression]
+      [(IsVarUndeclared M-State (car varList)) (error expression " variable not defined in an expression variable name: " (car varList))]
+      [else (MV_ConvertVarToVal* M-State (replaceall* (car varList) (LookupValue M-State (car varList)) expression) (cdr varList))])))
 
 ;M-Value -> takes in M-State and a partial statement, ultimately resolves the partial statement down to a value and returns that value could be true, false, or a number
 (define M-Value
   (lambda (M-State val)
     (cond
       [(or (number? val) (eq? val 'null) (eq? val #t) (eq? val #f)) val]
-      [(list? val) (error val "No M-Value for lists yet")]
-      [(IsVarUndeclared M-State val) (error val "Undeclared variable!")]
+      [(and (list? val) (MV_IsBoolExpression val)) (error val "No M-Value for boolean expressions yet")] ;potential mix of integer and comparison operators
+      [(list? val) (M-Integer (MV_ConvertVarToVal* M-State val (MV_ListOfVars (flatten val))))] ;Integer expression only
+      [(IsVarUndeclared M-State val) (error val "Undeclared variable!")] ;undeclared variable
       [else (LookupValue M-State val)]
 )))
 
