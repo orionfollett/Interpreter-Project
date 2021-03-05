@@ -21,42 +21,50 @@
 ;return statement indicates end of the program
 
 ;*******************************HELPER FUNCTIONS FOR M_INTEGER**************************
+
+;MI_GetOperation means it is a helper function only to be used with M-Integer
 ;get-operation accepts a list in prefix notation
 ;Extracts the operation from the expression
 ;Ex: (get-operation '(+ 1 2)) -> +
-(define get-operation
+(define MI_GetOperation
   (lambda (expression)
     (car expression)
     ))
 
-;get-first-operand accepts a list in prefix notation
+;MI_GetFirstOperand accepts a list in prefix notation
 ;Extracts the first operand from the expression
 ;Ex: (get-operation '(/ 1 2)) -> 1
-(define get-first-operand
+(define MI_GetFirstOperand
   (lambda (expression)
     (car (cdr expression))
     ))
 
-;get-second-operand accepts a list in prefix notation
+;MI_GetSecondOperand accepts a list in prefix notation
 ;Extracts the first operand from the expression
 ;Ex: (get-operation '(/ 1 2)) -> 2
-(define get-second-operand
+(define MI_GetSecondOperand
   (lambda (expression)
     (car (cdr (cdr expression)))))
+
+(define MI_IsUnary
+  (lambda (expression)
+    (not (pair? (cdr (cdr expression))))
+    ))
     
-;M-Integer: evaluates integer expressions
+;M-Integer: evaluates integer expressions, takes in an expression, outputs an integer value
 ;takes form '(operation number number) possible operations:  + | - | * | / | %
 ;EX: (M_integer '(+ (- 1 2) (* 4 5))) -> 19
 
-(define M_integer
+(define M-Integer
   (lambda (expression)
     (cond
       [(number? expression) expression]
-      [(eq? (get-operation expression) '+) (+ (M_integer(get-first-operand expression)) (M_integer(get-second-operand expression)))]
-      [(eq? (get-operation expression) '-) (- (M_integer(get-first-operand expression)) (M_integer(get-second-operand expression)))]
-      [(eq? (get-operation expression) '*) (* (M_integer(get-first-operand expression)) (M_integer(get-second-operand expression)))]
-      [(eq? (get-operation expression) '/) (quotient (M_integer(get-first-operand expression)) (M_integer(get-second-operand expression)))]
-      [(eq? (get-operation expression) '%) (remainder (M_integer(get-first-operand expression)) (M_integer(get-second-operand expression)))])))
+      [(and (MI_IsUnary expression)(eq? (MI_GetOperation expression) '-)) (* -1 (M-Integer (MI_GetFirstOperand expression)))]
+      [(eq? (MI_GetOperation expression) '+) (+ (M-Integer(MI_GetFirstOperand expression)) (M-Integer(MI_GetSecondOperand expression)))]
+      [(eq? (MI_GetOperation expression) '-) (- (M-Integer(MI_GetFirstOperand expression)) (M-Integer(MI_GetSecondOperand expression)))]
+      [(eq? (MI_GetOperation expression) '*) (* (M-Integer(MI_GetFirstOperand expression)) (M-Integer(MI_GetSecondOperand expression)))]
+      [(eq? (MI_GetOperation expression) '/) (quotient (M-Integer(MI_GetFirstOperand expression)) (M-Integer(MI_GetSecondOperand expression)))]
+      [(eq? (MI_GetOperation expression) '%) (remainder (M-Integer(MI_GetFirstOperand expression)) (M-Integer(MI_GetSecondOperand expression)))])))
 
 
 ;M-Bool
@@ -68,11 +76,12 @@
 ;***********************************M-Value Helper Functions*****************************************
 
 
+
 ;M-Value -> takes in M-State and a partial statement, ultimately resolves the partial statement down to a value and returns that value could be true, false, or a number
 (define M-Value
   (lambda (M-State val)
     (cond
-      [(or (number? val) (eq? val #t) (eq? val #f)) val]
+      [(or (number? val) (eq? val 'null) (eq? val #t) (eq? val #f)) val]
       [(list? val) (error val "No M-Value for lists yet")]
       [(IsVarUndeclared M-State val) (error val "Undeclared variable!")]
       [else (LookupValue M-State val)]
