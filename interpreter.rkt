@@ -105,6 +105,11 @@
       [else (error "Value that is not a bool trying to be converted into a bool!")]
     )))
 
+;check if return state was reached
+(define IsDone
+  (lambda (M-State)
+      (not (IsVarUndeclared M-State 'return))
+    ))
 
 ;*******************************HELPER FUNCTIONS FOR M_INTEGER**************************
 
@@ -211,7 +216,7 @@
   (lambda (M-State expression varList)
     (cond
       [(null? varList) expression]
-      [(IsVarUndeclared M-State (car varList)) (error expression " variable not defined in an expression variable name: " (car varList))]
+      [(IsVarUndeclared M-State (car varList)) (error " variable not defined in an expression variable name: " (car varList))]
       [else (MV_ConvertVarToVal* M-State (replaceall* (car varList) (LookupValue M-State (car varList)) expression) (cdr varList))])))
 
 ;MV_NoProcessingNeeded - takes in val, returns true if it is a value, false if it needs further processing
@@ -235,7 +240,7 @@
       ;[(list? val) (M-Integer (MV_ConvertVarToVal* M-State val (MV_ListOfVars (flatten val))))] ;had no comparison operators but still is a list, Integer expression only
       [(list? val) (M-Expression (MV_ConvertVarToVal* M-State val (MV_ListOfVars (flatten val))))] ;Evaluate the expression
       [(custom-bool-literal? val) (ConvertToSchemeBool val)]
-      [(IsVarUndeclared M-State val) (error val "Undeclared variable!")] ;undeclared variable
+      [(IsVarUndeclared M-State val) (error "Undeclared variable!" val)] ;undeclared variable
       [else (LookupValue M-State val)]))) ;declared variable that needs to be resolved to a value
       
 ;*************************M-State Helper Functions**************************
@@ -245,17 +250,23 @@
 ;GetFirstBinding -> takes in M-State, returns the first binding
 (define GetFirstBinding
   (lambda (M-State)
-    (car M-State)))
+    (cond
+      [(null? M-State) '()]
+      [else (car M-State)])))
 
 ;GetFirstBindingName -> takes in M-State, returns first variable name of first binding
 (define GetFirstBindingName
   (lambda (M-State)
-    (car (GetFirstBinding M-State))))
+    (cond
+     [(null? (GetFirstBinding M-State)) '()]
+     [else (car (GetFirstBinding M-State))])))
 
 ;GetFirstBindingValue -> takes in M-State, returns first variable value of first binding
 (define GetFirstBindingValue
   (lambda (M-State)
-    (car (cdr (GetFirstBinding M-State)))))
+    (cond
+      [(null? M-State) '()]
+      [else (car (cdr (GetFirstBinding M-State)))])))
 
 ;IsNameUnused -> takes in M-State and variable name, makes sure name is not in the list
 (define IsVarUndeclared
@@ -338,8 +349,7 @@
   (lambda (M-State statement)
     (cond
       [(IsVarUndeclared M-State (AS_GetVarName statement)) (error (AS_GetVarName statement) "Assignment before declaration!")]
-      [else (ChangeBinding M-State (AS_GetVarName statement) (AS_GetVarVal statement))])))
-
+      [else (ChangeBinding M-State (AS_GetVarName statement) (M-Value M-State (AS_GetVarVal statement)))])))
 
 
 ;****************************If Statement functions****************************************************
@@ -365,7 +375,7 @@
     ))
 
 ;W_GetWhileBody takes in a while statement and returns the body of the loop
-(define W_GetWhileCondition
+(define W_GetWhileBody
   (lambda (statement)
     (car (cdr (cdr statement)))
     ))
@@ -374,8 +384,10 @@
 (define HandleWhile
   (lambda (M-State statement)
    (cond
-    [(W_CheckWhileCondition M-State statement) ]
-    []
+    [(number? M-State) (list (list 'return M-State))];program returned during the loop
+    [(IsDone M-State) M-State]
+    [(W_CheckWhileCondition M-State statement) (HandleWhile (step-through (W_GetWhileBody statement) M-State) statement)]
+    [else M-State]
     )))
 
 ;******************************Handle Return Statement********************************************
@@ -387,8 +399,7 @@
 
 (define HandleReturn
   (lambda (M-State statement)
-    (M-Value M-State (R_GetReturn statement))
-    ))
+    (list (list 'return (M-Value M-State (R_GetReturn statement))))))
 
 ;**************************parse tree step through helper functions: ***********************************
 
@@ -442,13 +453,14 @@
 (define step-through
   (lambda (program M-State)
     (cond
-      [(null? program) M-State];if the program ends without a return statement, just print M-State so you can see all the variables
+      [(IsDone M-State) (LookupValue M-State 'return)];checks to make sure program didn't return
+      [(null? program) M-State]
       [(IsVarDecStatement (GetFirstStatement program)) (step-through (cdr program) (HandleVarDec M-State (GetFirstStatement program)))]
       [(IsAssignStatement (GetFirstStatement program)) (step-through (cdr program) (HandleAssign M-State (GetFirstStatement program)))]
       [(IsIfStatement (GetFirstStatement program)) (step-through (cdr program) (HandleIf M-State (GetFirstStatement program)))]
       [(IsWhileStatement (GetFirstStatement program)) (step-through (cdr program) (HandleWhile M-State (GetFirstStatement program)))]
-      [(IsReturnStatement (GetFirstStatement program)) (HandleReturn M-State (GetFirstStatement program))]; just returns
-      [else M-State])));this line should never run but its there for debugging purposes.
+      [(IsReturnStatement (GetFirstStatement program)) (step-through '() (HandleReturn M-State (GetFirstStatement program)))]; just returns
+      [else M-State])));if the program ends without a return statement, just print M-State so you can see all the variables
 
 ;Main Interpreter function
 
@@ -461,7 +473,6 @@
 
 ;Quick Run:
 (interpret "testProgram.txt")
-
 
 ;cps style example
 (define factorial-cps
