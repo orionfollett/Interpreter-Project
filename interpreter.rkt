@@ -16,9 +16,9 @@
 
 ;interpret will step through each statement, execute what needs to get done based on that line, and then interpret the rest of the code
 
-;There may need to be an M-state list that is passed nearly everywhere, it will have all variable bindings so '((x 1) (y 3) ...)
+;There is an M-state list that is passed nearly everywhere, it will have all variable bindings so '((x 1) (y 3) ...)
 
-;return statement indicates end of the program
+;return statement indicates end of the program, M-State gets changed to (return value) and the program returns the value
 
 
 
@@ -114,13 +114,6 @@
       [else (error "Value that is not a bool trying to be converted into a bool!")]
     )))
 
-
-;check if return state was reached
-(define IsDone
-  (lambda (M-State)
-    (not (IsVarUndeclared M-State 'return))
-    ))
-
 ;*******************************HELPER FUNCTIONS FOR M_INTEGER**************************
 
 ;MI_GetOperation means it is a helper function only to be used with M-Integer
@@ -206,8 +199,6 @@
     (M-Integer expression)
     ))
 
-
-
 ;***********************************M-Value Helper Functions*****************************************
 
 ;there are two types of expressions, boolean expressions, and integer expressions
@@ -246,8 +237,6 @@
   (lambda (M-State val)
     (cond
       [(MV_NoProcessingNeeded val) val]
-      ;[(MV_IsBoolExpression val) (M-Bool val)] ;potential mix of integer and comparison operators
-      ;[(list? val) (M-Integer (MV_ConvertVarToVal* M-State val (MV_ListOfVars (flatten val))))] ;had no comparison operators but still is a list, Integer expression only
       [(list? val) (M-Expression (MV_ConvertVarToVal* M-State val (MV_ListOfVars (flatten val))))] ;Evaluate the expression
       [(custom-bool-literal? val) (ConvertToSchemeBool val)]
       [(IsVarUndeclared M-State val) (error "Undeclared variable!" val)] ;undeclared variable
@@ -391,31 +380,16 @@
     (eq? (car statement) 'if)
     ))
 
-;Form a list of if conditions, recurse through them to find the first true one, match that to the correct body, only run that code
-
-
-;example if else if else if else (if true (= x 2) (if true (= x 2) (if false (= x 2) (= x 2))))
-;example if (if true (= x 2))
-;example if else(if false (= x 2) (= x 2))
-
-
-;return the m-State corresponding to step-through that body
-
-;(if true (= x 2) (if true (= x 2) (if false (= x 2) (= x 2))))
-
-
-
-
 ;HandleIf -> Takes in M-State and an if statement, returns updated M-State
 (define HandleIf
   (lambda (M-State statement)
     (cond
-    [(not (list? M-State)) (list (list 'return M-State))];program returned during the loop, program returns a single value so put it back in proper form
+    [(not (list? M-State)) (list (list 'return M-State))];program returned during the if statement, program returns a single value so put it back in proper form
     [(null? statement) M-State];none of the if statements were true
-    [(M-Value M-State (I_GetIfCondition statement)) (HandleIf (step-through (I_GetIfBody statement) M-State) '())]
-    [(and (not (null? (I_GetNext statement))) (I_IsIf? (I_GetNext statement))) (HandleIf M-State (I_GetNext statement))]
-    [(null? (I_GetNext statement)) M-State];nothing left
-    [else (HandleIf (step-through (I_GetNext statement) M-State) '())];it is an else statement remaining
+    [(M-Value M-State (I_GetIfCondition statement)) (HandleIf (step-through (I_GetIfBody statement) M-State) '())] ;if statement was true, so run the body
+    [(and (not (null? (I_GetNext statement))) (I_IsIf? (I_GetNext statement))) (HandleIf M-State (I_GetNext statement))] ;if statement was false, but there are more ifs to check check the next one
+    [(null? (I_GetNext statement)) M-State];nothing left to check, return the state
+    [else (HandleIf (step-through (I_GetNext statement) M-State) '())];there is an else statement remaining, run that code, then return the updated M-State
     )))
 
 
@@ -453,18 +427,20 @@
 
 ;******************************Handle Return Statement********************************************
 
+;R_GetReturn, helper function for HandleReturn, takes in a return statement returns the return value/expression in the return statement
 (define R_GetReturn
   (lambda (statement)
     (car (cdr statement))
     ))
 
+;HandleReturn -> returns the return statement in proper form
 (define HandleReturn
   (lambda (M-State statement)
     (list (list 'return (M-Value M-State (R_GetReturn statement))))))
 
 ;**************************parse tree step through helper functions: ***********************************
 
-;GetFirstStatement - returns the first statement of the parsed program
+;GetFirstStatement - takes in the parsed program returns the first statement of the parsed program
 (define GetFirstStatement
   (lambda (program)
     (if (list? (car program))
@@ -508,6 +484,12 @@
         #t
         #f)))
 
+;IsDone -> takes in M-State, returns true if M-State has a return variable
+(define IsDone
+  (lambda (M-State)
+    (not (IsVarUndeclared M-State 'return))
+    ))
+
 ;takes in the return val, returns the return value in proper form
 (define HandleDone
   (lambda (returnVal)
@@ -516,14 +498,13 @@
       [(eq? #f returnVal) 'false]
       [else returnVal])))
 
-;step-through is UNFINISHED
 ;step-through takes program: the parsed program, M-state: a list of bindings
-;it is used to step through each line of the program
+;it is used to step through each line of the program, it returns the return value if the program returned, or M-State if it didn't
 (define step-through
   (lambda (program M-State)
     (cond
       [(IsDone M-State) (HandleDone (LookupValue M-State 'return))];if program returned this ends the program and returns the return value
-      [(null? program) M-State]; need to check this to prevent errors with checking the cdr or car of an empty list
+      [(null? program) M-State]; need to check this to prevent errors with checking the cdr or car of an empty list, if program ends unexpectedly, will print M-State
       [(IsVarDecStatement (GetFirstStatement program)) (step-through (cdr program) (HandleVarDec M-State (GetFirstStatement program)))]
       [(IsAssignStatement (GetFirstStatement program)) (step-through (cdr program) (HandleAssign M-State (GetFirstStatement program)))]
       [(IsIfStatement (GetFirstStatement program)) (step-through (cdr program) (HandleIf M-State (GetFirstStatement program)))]
@@ -541,4 +522,25 @@
     (step-through (parser filename) '())))
 
 ;Quick Run:
-(interpret "testProgram.txt")
+;
+(eq? (interpret "t1.txt") 150)
+(eq? (interpret "t2.txt") -4)
+(eq? (interpret "t3.txt") 10)
+(eq? (interpret "t4.txt") 16)
+(eq? (interpret "t5.txt") 220)
+(eq? (interpret "t6.txt") 5)
+(eq? (interpret "t7.txt") 6)
+(eq? (interpret "t8.txt") 10)
+(eq? (interpret "t9.txt") 5)
+(eq? (interpret "t10.txt") -39)
+;(eq? (interpret "t12.txt") ) should give error
+;(eq? (interpret "t13.txt") ) should give error
+;(eq? (interpret "t14.txt") ) should give error
+;(eq? (interpret "t15.txt") ) should give error
+(eq? (interpret "t16.txt") 100)
+(eq? (interpret "t17.txt") 'false)
+(eq? (interpret "t18.txt") 'true)
+(eq? (interpret "t19.txt") 128)
+(eq? (interpret "t20.txt") 12)
+
+;(interpret "testProgram.txt")
