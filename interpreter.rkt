@@ -222,7 +222,7 @@
 ;MV_NoProcessingNeeded - takes in val, returns true if it is a value, false if it needs further processing
 (define MV_NoProcessingNeeded
   (lambda (val)
-    (or (number? val) (eq? val 'null))
+    (or (number? val) (eq? val 'null) (eq? val #t) (eq? val #f))
     ))
 
 ;MV_IsBoolExpression - takes a val, returns true if it is an expression with bool operators
@@ -354,14 +354,29 @@
 
 ;****************************If Statement functions****************************************************
 
+;I_ indicates it is a helper function for HandleIf, it should only be used for HandleIf
+
+;I_GetIfCondition
+(define I_GetIfCondition
+  (lambda (statement)
+    (car (cdr statement))))
+
+;I_GetIfBody
+(define I_GetIfBody
+  (lambda (statement)
+    (car (cdr (cdr statement)))))
+
 ;HandleIf -> Takes in M-State and an if statement, returns updated M-State
 (define HandleIf
   (lambda (M-State statement)
     M-State
     ))
 
+
+
 ;*****************************While Statement functions ******************************************
 
+;W_ indicates it is a helper function for HandleWhile so it should only be used for that
 ;W_GetWhileCondition takes in a while statement and returns the loop condition
 (define W_GetWhileCondition
   (lambda (statement)
@@ -473,11 +488,3 @@
 
 ;Quick Run:
 (interpret "testProgram.txt")
-
-;cps style example
-(define factorial-cps
-  (lambda (x return)
-    (if (zero? x)
-        (return 1)
-        (factorial-cps (- x 1) (lambda (v) (return (* x v))))
-        )))
