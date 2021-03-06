@@ -1,11 +1,14 @@
 var x = true;
 var z = false;
+var y;
 
-if(z)
+if(z - 3 == 2)
   var y = 2;
-else if(x)
+else if(x + 2 < 3)
   var y = 3;
+else if(false || true)
+  var y = 2;
 else
  return 3;
 
-return y;
+return x;

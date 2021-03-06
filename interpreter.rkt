@@ -96,7 +96,7 @@
       [else #f]
     )))
 
-;ReturnBoolLiteral - takes val that is either 'true or 'false, returns #t if it is 'true, #f is it is 'false
+;ConvertToSchemeBool - takes val that is either 'true or 'false, returns #t if it is 'true, #f is it is 'false
 (define ConvertToSchemeBool
   (lambda (val)
     (cond
@@ -104,6 +104,16 @@
       [(eq? val 'false) #f]
       [else (error "Value that is not a bool trying to be converted into a bool!")]
     )))
+
+;ConvertToCustomBool - takes val that is either #t or #f converts it to 'true or 'false
+(define ConvertToCustomBool
+  (lambda (val)
+    (cond
+      [(eq? val #t) 'true]
+      [(eq? val #f) 'false]
+      [else (error "Value that is not a bool trying to be converted into a bool!")]
+    )))
+
 
 ;check if return state was reached
 (define IsDone
@@ -366,10 +376,28 @@
   (lambda (statement)
     (car (cdr (cdr statement)))))
 
+;takes in a single if statement condition, and if statement body
+(HandleSingleIf
+ (lambda (M-State, condition, body)
+   (cond 
+         [(M-Value condition) (HandleSingleIf (step-through body M-State) #f '())]
+         [else M-State]
+   )))
+
+;form a list of if conditions, recurse through them to find the first true one, match that to the correct body, only run that code
+
+;Form condition and body list, format: similar to M-State ((#t body) (#f body) (#t body) ...)
+
+;take in list return the body that has the first true pair
+
+;return the m-State corresponding to step-through that body
+
+
 ;HandleIf -> Takes in M-State and an if statement, returns updated M-State
 (define HandleIf
   (lambda (M-State statement)
-    M-State
+    
+      
     ))
 
 
@@ -455,12 +483,20 @@
         #t
         #f)))
 
-;IsReturnStatement takes in a single statement, returns true if it is an if statement
+;IsReturnStatement takes in a single statement, returns true if it is a return statement
 (define IsReturnStatement
   (lambda (statement)
   (if (eq? (car statement) 'return)
         #t
         #f)))
+
+;takes in the return val, returns the return value in proper form
+(define HandleDone
+  (lambda (returnVal)
+    (cond
+      [(eq? #t returnVal) 'true]
+      [(eq? #f returnVal) 'false]
+      [else returnVal])))
 
 ;step-through is UNFINISHED
 ;step-through takes program: the parsed program, M-state: a list of bindings
@@ -468,7 +504,7 @@
 (define step-through
   (lambda (program M-State)
     (cond
-      [(IsDone M-State) (LookupValue M-State 'return)];checks to make sure program didn't return
+      [(IsDone M-State) (HandleDone (LookupValue M-State 'return))];if program returned this ends the program and returns the return value
       [(null? program) M-State]
       [(IsVarDecStatement (GetFirstStatement program)) (step-through (cdr program) (HandleVarDec M-State (GetFirstStatement program)))]
       [(IsAssignStatement (GetFirstStatement program)) (step-through (cdr program) (HandleAssign M-State (GetFirstStatement program)))]
