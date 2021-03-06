@@ -366,39 +366,56 @@
 
 ;I_ indicates it is a helper function for HandleIf, it should only be used for HandleIf
 
-;I_GetIfCondition
+;I_GetIfCondition takes in if statement returns if condition
 (define I_GetIfCondition
   (lambda (statement)
     (car (cdr statement))))
 
-;I_GetIfBody
+;I_GetIfBody takes in if statement returns if body
 (define I_GetIfBody
   (lambda (statement)
     (car (cdr (cdr statement)))))
 
-;takes in a single if statement condition, and if statement body
-(HandleSingleIf
- (lambda (M-State, condition, body)
-   (cond 
-         [(M-Value condition) (HandleSingleIf (step-through body M-State) #f '())]
-         [else M-State]
-   )))
+;I_GetNext takes in if statement returns next if condition (should return either the else body or an empty list if there isnt one)
+(define I_GetNext
+  (lambda (statement)
+    (cond
+      [(null? statement) '()]
+      [(null? (cdr (cdr (cdr statement)))) '()]
+      [else (car (cdr (cdr (cdr statement))))]
+    )))
 
-;form a list of if conditions, recurse through them to find the first true one, match that to the correct body, only run that code
+;I_IsIf? takes a statement, returns true if the beginning is a full if block
+(define I_IsIf?
+  (lambda (statement)
+    (eq? (car statement) 'if)
+    ))
 
-;Form condition and body list, format: similar to M-State ((#t body) (#f body) (#t body) ...)
+;Form a list of if conditions, recurse through them to find the first true one, match that to the correct body, only run that code
 
-;take in list return the body that has the first true pair
+
+;example if else if else if else (if true (= x 2) (if true (= x 2) (if false (= x 2) (= x 2))))
+;example if (if true (= x 2))
+;example if else(if false (= x 2) (= x 2))
+
 
 ;return the m-State corresponding to step-through that body
+
+;(if true (= x 2) (if true (= x 2) (if false (= x 2) (= x 2))))
+
+
 
 
 ;HandleIf -> Takes in M-State and an if statement, returns updated M-State
 (define HandleIf
   (lambda (M-State statement)
-    
-      
-    ))
+    (cond
+    [(null? statement) M-State];none of the if statements were true
+    [(not (list? M-State)) (list (list 'return M-State))];program returned during the loop, program returns a single value so put it back in proper form
+    [(M-Value M-State (I_GetIfCondition statement)) (step-through (I_GetIfBody statement) M-State)]
+    [(I_IsIf? (I_GetNext statement)) (HandleIf M-State (I_GetNext statement))]
+    [else (step-through statement M-State)];it is an else statement remaining
+    )))
 
 
 
@@ -427,8 +444,8 @@
 (define HandleWhile
   (lambda (M-State statement)
    (cond
-    [(number? M-State) (list (list 'return M-State))];program returned during the loop
-    [(IsDone M-State) M-State]
+    [(not (list? M-State)) (list (list 'return M-State))];program returned during the loop, program returns a single value so put it back in proper form
+    ;[(IsDone M-State) M-State]
     [(W_CheckWhileCondition M-State statement) (HandleWhile (step-through (W_GetWhileBody statement) M-State) statement)]
     [else M-State]
     )))
@@ -505,7 +522,7 @@
   (lambda (program M-State)
     (cond
       [(IsDone M-State) (HandleDone (LookupValue M-State 'return))];if program returned this ends the program and returns the return value
-      [(null? program) M-State]
+      [(null? program) M-State]; need to check this to prevent errors with checking the cdr or car of an empty list
       [(IsVarDecStatement (GetFirstStatement program)) (step-through (cdr program) (HandleVarDec M-State (GetFirstStatement program)))]
       [(IsAssignStatement (GetFirstStatement program)) (step-through (cdr program) (HandleAssign M-State (GetFirstStatement program)))]
       [(IsIfStatement (GetFirstStatement program)) (step-through (cdr program) (HandleIf M-State (GetFirstStatement program)))]
