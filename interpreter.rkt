@@ -68,12 +68,12 @@
     )))
 
 ;contains-bool -> takes in a flattened expression, if the expression has any of the boolean operators in it return true, else return false
-(define contains-bool
+(define contains-bool-operator
   (lambda (expression)
     (cond
       [(null? expression) #f]
       [(bool-operation? (car expression)) #t]
-      [else (contains-bool (cdr expression))])))
+      [else (contains-bool-operator (cdr expression))])))
 
 ;var? -> returns true if x is not a keyword (true or false), operation, or number 
 (define var?
@@ -82,11 +82,29 @@
     ))
 
 
-;bool-literal? -> takes an atom, returns #t if it is a valid bool literal
-(define bool-literal?
+;custom-bool-literal? -> takes an atom, returns #t if it is a valid bool literal
+(define custom-bool-literal?
   (lambda (x)
     (or (eq? x 'true) (eq? x 'false))
     ))
+
+;bool? -> takes an atom, returns #t if it is either #t or #f, returns false if it isnt
+(define bool?
+  (lambda (x)
+    (cond
+      [(or (eq? x #t) (eq? x #f)) #t]
+      [else #f]
+    )))
+
+;ReturnBoolLiteral - takes val that is either 'true or 'false, returns #t if it is 'true, #f is it is 'false
+(define ConvertToSchemeBool
+  (lambda (val)
+    (cond
+      [(eq? val 'true) #t]
+      [(eq? val 'false) #f]
+      [else (error "Value that is not a bool trying to be converted into a bool!")]
+    )))
+
 
 ;*******************************HELPER FUNCTIONS FOR M_INTEGER**************************
 
@@ -133,11 +151,45 @@
       [(eq? (MI_GetOperation expression) '*) (* (M-Integer(MI_GetFirstOperand expression)) (M-Integer(MI_GetSecondOperand expression)))]
       [(eq? (MI_GetOperation expression) '/) (quotient (M-Integer(MI_GetFirstOperand expression)) (M-Integer(MI_GetSecondOperand expression)))]
       [(eq? (MI_GetOperation expression) '%) (remainder (M-Integer(MI_GetFirstOperand expression)) (M-Integer(MI_GetSecondOperand expression)))]
-      [else (error "non number tried to use arithmetic operators")])))
+      [else (M-Bool expression)])))
 
 ;M-Bool
-;evaluates a boolean expression that has comparison operators, and logical operators
+;evaluates a boolean expression that has comparison operators, and logical operators, outputs true or false
+;takes form '(operation expression expression) possible operations:  && | || | ! |
+;EX: (M_Bool '(true || false)) -> true
 
+(define M-Bool
+  (lambda (expression)
+    (cond
+      [(bool? expression) (expression)]
+      [(custom-bool-literal? expression) (ConvertToSchemeBool expression)]
+      [(and (MI_IsUnary expression)(eq? (MI_GetOperation expression) '!)) (not (M-Bool (MI_GetFirstOperand expression)))]
+      [(eq? (MI_GetOperation expression) '&&) (and (M-Bool(MI_GetFirstOperand expression)) (M-Bool(MI_GetSecondOperand expression)))]
+      [(eq? (MI_GetOperation expression) '||) (or (M-Bool(MI_GetFirstOperand expression)) (M-Bool(MI_GetSecondOperand expression)))]
+      ;[else (error "non bool tried to use boolean operators")])))
+      [else (M-Compare expression)])))
+;M-Compare
+;evaluates a comparison expression that has comparison operators numbers, and integer expressions, outputs true or false
+;takes form '(operation expression expression) possible operations:  
+;< | > | == | <= | >= | !=
+;EX: (M_Compare '(> 2 (+ 3 1))) -> false
+
+(define M-Compare
+  (lambda (expression)
+    (cond
+      [(eq? (MI_GetOperation expression) '>) (> (M-Integer(MI_GetFirstOperand expression)) (M-Integer(MI_GetSecondOperand expression)))]
+      [(eq? (MI_GetOperation expression) '<) (< (M-Integer(MI_GetFirstOperand expression)) (M-Integer(MI_GetSecondOperand expression)))]
+      [(eq? (MI_GetOperation expression) '>=) (>= (M-Integer(MI_GetFirstOperand expression)) (M-Integer(MI_GetSecondOperand expression)))]
+      [(eq? (MI_GetOperation expression) '<=) (<= (M-Integer(MI_GetFirstOperand expression)) (M-Integer(MI_GetSecondOperand expression)))]
+      [(eq? (MI_GetOperation expression) '==) (eq? (M-Integer(MI_GetFirstOperand expression)) (M-Integer(MI_GetSecondOperand expression)))]
+      [(eq? (MI_GetOperation expression) '!=) (not (eq? (M-Integer(MI_GetFirstOperand expression)) (M-Integer(MI_GetSecondOperand expression))))]
+      [else (error "No way to resolve expression!")])))
+
+;Begins entry point for expression evaluation
+(define M-Expression
+  (lambda (expression)
+    (M-Integer expression)
+    ))
 
 
 
@@ -162,23 +214,16 @@
       [(IsVarUndeclared M-State (car varList)) (error expression " variable not defined in an expression variable name: " (car varList))]
       [else (MV_ConvertVarToVal* M-State (replaceall* (car varList) (LookupValue M-State (car varList)) expression) (cdr varList))])))
 
-
 ;MV_NoProcessingNeeded - takes in val, returns true if it is a value, false if it needs further processing
 (define MV_NoProcessingNeeded
   (lambda (val)
-    (or (number? val) (eq? val 'null) (eq? val 'true) (eq? val 'false))
+    (or (number? val) (eq? val 'null))
     ))
 
 ;MV_IsBoolExpression - takes a val, returns true if it is an expression with bool operators
 (define MV_IsBoolExpression
   (lambda (val)
-    (and (list? val) (contains-bool (flatten val)))
-    ))
-
-;MV_ReturnBoolLiteral - takes val that is either 'true or 'false, returns #t if it is 'true, #f is it is 'false
-(define MV_ReturnBoolLiteral
-  (lambda (val)
-      (eq? val 'true)
+    (and (list? val) (contains-bool-operator (flatten val)))
     ))
 
 ;M-Value -> takes in M-State and a partial statement, ultimately resolves the partial statement down to a value and returns that value could be true, false, or a number
@@ -186,9 +231,10 @@
   (lambda (M-State val)
     (cond
       [(MV_NoProcessingNeeded val) val]
-      [(MV_IsBoolExpression val) (error "No M-Value for boolean expressions yet")] ;potential mix of integer and comparison operators
-      [(list? val) (M-Integer (MV_ConvertVarToVal* M-State val (MV_ListOfVars (flatten val))))] ;had no comparison operators but still is a list, Integer expression only
-      [(bool-literal? val) (MV_ReturnBoolLiteral val)]
+      ;[(MV_IsBoolExpression val) (M-Bool val)] ;potential mix of integer and comparison operators
+      ;[(list? val) (M-Integer (MV_ConvertVarToVal* M-State val (MV_ListOfVars (flatten val))))] ;had no comparison operators but still is a list, Integer expression only
+      [(list? val) (M-Expression (MV_ConvertVarToVal* M-State val (MV_ListOfVars (flatten val))))] ;Evaluate the expression
+      [(custom-bool-literal? val) (ConvertToSchemeBool val)]
       [(IsVarUndeclared M-State val) (error val "Undeclared variable!")] ;undeclared variable
       [else (LookupValue M-State val)]))) ;declared variable that needs to be resolved to a value
       
