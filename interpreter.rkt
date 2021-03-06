@@ -340,6 +340,56 @@
       [(IsVarUndeclared M-State (AS_GetVarName statement)) (error (AS_GetVarName statement) "Assignment before declaration!")]
       [else (ChangeBinding M-State (AS_GetVarName statement) (AS_GetVarVal statement))])))
 
+
+
+;****************************If Statement functions****************************************************
+
+;HandleIf -> Takes in M-State and an if statement, returns updated M-State
+(define HandleIf
+  (lambda (M-State statement)
+    M-State
+    ))
+
+;*****************************While Statement functions ******************************************
+
+;W_GetWhileCondition takes in a while statement and returns the loop condition
+(define W_GetWhileCondition
+  (lambda (statement)
+    (car (cdr statement))
+    ))
+
+;W_CheckWhileCondition takes in a while statement and return true or false depending on if it is true or false
+(define W_CheckWhileCondition
+  (lambda (M-State statement)
+    (M-Value M-State (W_GetWhileCondition statement))
+    ))
+
+;W_GetWhileBody takes in a while statement and returns the body of the loop
+(define W_GetWhileCondition
+  (lambda (statement)
+    (car (cdr (cdr statement)))
+    ))
+
+;HandleWhile -> Takes in M-State and a while statement, returns updated M-State
+(define HandleWhile
+  (lambda (M-State statement)
+   (cond
+    [(W_CheckWhileCondition M-State statement) ]
+    []
+    )))
+
+;******************************Handle Return Statement********************************************
+
+(define R_GetReturn
+  (lambda (statement)
+    (car (cdr statement))
+    ))
+
+(define HandleReturn
+  (lambda (M-State statement)
+    (M-Value M-State (R_GetReturn statement))
+    ))
+
 ;**************************parse tree step through helper functions: ***********************************
 
 ;GetFirstStatement - returns the first statement of the parsed program
@@ -364,18 +414,41 @@
         #t
         #f)))
 
+;IsIfStatement takes in a single statement, returns true if it is an if statement
+(define IsIfStatement
+  (lambda (statement)
+    (if (eq? (car statement) 'if)
+        #t
+        #f)))
+
+
+;IsWhileStatement takes in a single statement, returns true if it is an if statement
+(define IsWhileStatement
+  (lambda (statement)
+    (if (eq? (car statement) 'while)
+        #t
+        #f)))
+
+;IsReturnStatement takes in a single statement, returns true if it is an if statement
+(define IsReturnStatement
+  (lambda (statement)
+  (if (eq? (car statement) 'return)
+        #t
+        #f)))
 
 ;step-through is UNFINISHED
-;step-cps takes program: the parsed program, M-state: a list of bindings
+;step-through takes program: the parsed program, M-state: a list of bindings
 ;it is used to step through each line of the program
 (define step-through
   (lambda (program M-State)
     (cond
-      [(null? program) M-State]
+      [(null? program) M-State];if the program ends without a return statement, just print M-State so you can see all the variables
       [(IsVarDecStatement (GetFirstStatement program)) (step-through (cdr program) (HandleVarDec M-State (GetFirstStatement program)))]
       [(IsAssignStatement (GetFirstStatement program)) (step-through (cdr program) (HandleAssign M-State (GetFirstStatement program)))]
-      [else M-State])))
-
+      [(IsIfStatement (GetFirstStatement program)) (step-through (cdr program) (HandleIf M-State (GetFirstStatement program)))]
+      [(IsWhileStatement (GetFirstStatement program)) (step-through (cdr program) (HandleWhile M-State (GetFirstStatement program)))]
+      [(IsReturnStatement (GetFirstStatement program)) (HandleReturn M-State (GetFirstStatement program))]; just returns
+      [else M-State])));this line should never run but its there for debugging purposes.
 
 ;Main Interpreter function
 
