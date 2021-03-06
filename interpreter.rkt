@@ -521,26 +521,26 @@
   (lambda (filename)
     (step-through (parser filename) '())))
 
-;Quick Run:
+;Test Cases:
 ;
-(eq? (interpret "t1.txt") 150)
-(eq? (interpret "t2.txt") -4)
-(eq? (interpret "t3.txt") 10)
-(eq? (interpret "t4.txt") 16)
-(eq? (interpret "t5.txt") 220)
-(eq? (interpret "t6.txt") 5)
-(eq? (interpret "t7.txt") 6)
-(eq? (interpret "t8.txt") 10)
-(eq? (interpret "t9.txt") 5)
-(eq? (interpret "t10.txt") -39)
+;(eq? (interpret "t1.txt") 150)
+;(eq? (interpret "t2.txt") -4)
+;(eq? (interpret "t3.txt") 10)
+;(eq? (interpret "t4.txt") 16)
+;(eq? (interpret "t5.txt") 220)
+;(eq? (interpret "t6.txt") 5)
+;(eq? (interpret "t7.txt") 6)
+;(eq? (interpret "t8.txt") 10)
+;(eq? (interpret "t9.txt") 5)
+;(eq? (interpret "t10.txt") -39)
 ;(eq? (interpret "t12.txt") ) should give error
 ;(eq? (interpret "t13.txt") ) should give error
 ;(eq? (interpret "t14.txt") ) should give error
 ;(eq? (interpret "t15.txt") ) should give error
-(eq? (interpret "t16.txt") 100)
-(eq? (interpret "t17.txt") 'false)
-(eq? (interpret "t18.txt") 'true)
-(eq? (interpret "t19.txt") 128)
-(eq? (interpret "t20.txt") 12)
+;(eq? (interpret "t16.txt") 100)
+;(eq? (interpret "t17.txt") 'false)
+;(eq? (interpret "t18.txt") 'true)
+;(eq? (interpret "t19.txt") 128)
+;(eq? (interpret "t20.txt") 12)
 
 ;(interpret "testProgram.txt")
