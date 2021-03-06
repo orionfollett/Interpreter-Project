@@ -118,7 +118,7 @@
 ;check if return state was reached
 (define IsDone
   (lambda (M-State)
-      (not (IsVarUndeclared M-State 'return))
+    (not (IsVarUndeclared M-State 'return))
     ))
 
 ;*******************************HELPER FUNCTIONS FOR M_INTEGER**************************
@@ -176,7 +176,7 @@
 (define M-Bool
   (lambda (expression)
     (cond
-      [(bool? expression) (expression)]
+      [(bool? expression) expression]
       [(custom-bool-literal? expression) (ConvertToSchemeBool expression)]
       [(and (MI_IsUnary expression)(eq? (MI_GetOperation expression) '!)) (not (M-Bool (MI_GetFirstOperand expression)))]
       [(eq? (MI_GetOperation expression) '&&) (and (M-Bool(MI_GetFirstOperand expression)) (M-Bool(MI_GetSecondOperand expression)))]
@@ -410,11 +410,12 @@
 (define HandleIf
   (lambda (M-State statement)
     (cond
-    [(null? statement) M-State];none of the if statements were true
     [(not (list? M-State)) (list (list 'return M-State))];program returned during the loop, program returns a single value so put it back in proper form
-    [(M-Value M-State (I_GetIfCondition statement)) (step-through (I_GetIfBody statement) M-State)]
-    [(I_IsIf? (I_GetNext statement)) (HandleIf M-State (I_GetNext statement))]
-    [else (step-through statement M-State)];it is an else statement remaining
+    [(null? statement) M-State];none of the if statements were true
+    [(M-Value M-State (I_GetIfCondition statement)) (HandleIf (step-through (I_GetIfBody statement) M-State) '())]
+    [(and (not (null? (I_GetNext statement))) (I_IsIf? (I_GetNext statement))) (HandleIf M-State (I_GetNext statement))]
+    [(null? (I_GetNext statement)) M-State];nothing left
+    [else (HandleIf (step-through (I_GetNext statement) M-State) '())];it is an else statement remaining
     )))
 
 
