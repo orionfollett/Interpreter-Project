@@ -4,7 +4,20 @@
 ;Orion Follett
 ;Prithik Karthikeyan
 
-;General Idea:
+;Part 2 General Idea/ List of Features
+;1. code blocks and scoping
+;2. break, continue, throw
+;3. try catch finally 
+;
+;For scoping, M-state will now be a more nested list, '(((f 5) (h 6)) (d 4) (y 2) (x 1))
+;when a code block begins, start a new layer in M-State by consing an empty list onto M-State, '(() (x 3) (r 4) (e 5))
+;when a code block ends, pop off layer that corresponds to that code block by removing the car of Mstate
+;this means that the order of M-State will matter
+;task 1 is to modify M-state functions to account for these changes.
+;Takse  1.1 modify add and remove binding to work for multilayered things
+;task 2 is write handle code block to add a layer at the beginning and remove a layer at the end
+
+;Part 1 General Idea:
 ;parser filename gives a list where each sublist is a statement
 ;there are five different types of statements
 
@@ -260,6 +273,7 @@
 ;*************************M-State Helper Functions**************************
 
 ;M-State format: '((return returnval)(x 0)(y 3)(varname value)...) contains all declared variables
+;Updated M-State format -> '(((x 3)) (y 2) (d 3))can have nested bindings
 
 ;GetFirstBinding -> takes in M-State, returns the first binding
 (define GetFirstBinding
@@ -310,12 +324,43 @@
   (lambda (M-State varName varVal)
     (AddNewBinding (RemoveBinding M-State varName) varName varVal)))
 
+;IsNewLayer? takes in M-State, returns true if it has a new layer on it, false otherwise
+(define IsNewLayer?
+  (lambda(M-State)
+    (cond
+      [(null? M-State) #f]
+      [(null? (car M-State)) #t]
+      [(list? (car (car M-State))) #t]
+      [else #f]
+    )))
+
+;takes M-State returns M-State with the outermost layer removed
+(define RemoveLayer
+ (lambda(M-State)
+  (cdr M-State)
+   ))
+
+;takes M-State that is multilayered, returns first layer
+(define GetFirstLayer
+  (lambda(M-State)
+    (car M-State)))
+
+;takes in two atoms, returns null if they are both null, or the value of the one that is not null
+(define ResolveMultiLayerSearch
+  (lambda(a1 a2)
+    (cond
+      [(and (eq? a1 'null) (eq? a2 'null)) 'null]
+      [(eq? a1 'null) a2]
+      [else a1]
+      )))
+
 ;LookupValue -> takes in M-State, variable name, returns the value associated with that variable
 ;returns 'null if there is no value associated with that variable
 (define LookupValue
   (lambda (M-State varName)
     (cond
       [(null? M-State) 'null]
+      [(IsNewLayer? M-State) (ResolveMultiLayerSearch (LookupValue (GetFirstLayer M-State) varName) (LookupValue (RemoveLayer M-State) varName))]
       [(eq? (GetFirstBindingName M-State) varName) (GetFirstBindingValue M-State)]
       [else (LookupValue (cdr M-State) varName)])))
 
@@ -453,6 +498,30 @@
     (list (list 'return (M-Value M-State (R_GetReturn statement))))))
 
 
+;****************************************Handle Code Block**********************************************
+
+;helper function for HandleCodeBlock, adds a new layer to M-State
+(define CB_AddLayer
+  (lambda (M-State)
+   (cons '() M-State)))
+
+;helper function for RemoveLayer, removes the layer
+(define CB_RemoveLayer
+(lambda(M-State)
+  (cdr M-State)))
+
+;helper function for HandleCodeBlock, returns the body of the code without the begin statement
+(define CB_GetBody
+  (lambda(statement)
+    (cdr statement)))
+
+
+;takes a code block beginning with begin statement, returns M-State after resolving that code block
+(define HandleCodeBlock
+  (lambda(M-State statement)
+    (CB_RemoveLayer(step-through (CB_AddLayer M-State) (CB_GetBody statement)))))
+
+
 ;**************************parse tree step through helper functions: ***********************************
 
 ;GetFirstStatement - takes in the parsed program returns the first statement of the parsed program
@@ -497,6 +566,13 @@
         #t
         #f)))
 
+;IsCodeBlock takes in a single statement, returns true if it is a begin statement
+(define IsCodeBlockStatement
+  (lambda (statement)
+  (if (eq? (car statement) 'begin)
+        #t
+        #f)))
+
 ;IsDone -> takes in M-State, returns true if M-State has a return variable
 (define IsDone
   (lambda (M-State)
@@ -516,16 +592,6 @@
 (define step-through
   (lambda (program M-State)
    (step-through-cps program M-State (lambda(v) v))))
-    ;(cond
-     ; [(IsDone M-State) (HandleDone (LookupValue M-State 'return))];if program returned this ends the program and returns the return value
-      ;[(null? program) M-State]; need to check this to prevent errors with checking the cdr or car of an empty list, if program ends unexpectedly, will print M-State
-      ;[(IsVarDecStatement (GetFirstStatement program)) (step-through (cdr program) (HandleVarDec M-State (GetFirstStatement program)))]
-      ;[(IsAssignStatement (GetFirstStatement program)) (step-through (cdr program) (HandleAssign M-State (GetFirstStatement program)))]
-      ;[(IsIfStatement (GetFirstStatement program)) (step-through (cdr program) (HandleIf M-State (GetFirstStatement program)))]
-      ;[(IsWhileStatement (GetFirstStatement program)) (step-through (cdr program) (HandleWhile M-State (GetFirstStatement program)))]
-      ;[(IsReturnStatement (GetFirstStatement program)) (step-through '() (HandleReturn M-State (GetFirstStatement program)))]; just returns
-      ;[else M-State])));if the program ends without a return statement, just print M-State so you can see all the variables
-
 
 ;step-through-cps is the same as step-through but in cps style
 (define step-through-cps
@@ -537,6 +603,7 @@
      [(IsAssignStatement (GetFirstStatement program)) (step-through-cps (cdr program) (HandleAssign M-State (GetFirstStatement program)) return)]
      [(IsIfStatement (GetFirstStatement program)) (step-through-cps (cdr program) (HandleIf M-State (GetFirstStatement program)) return)]
      [(IsWhileStatement (GetFirstStatement program)) (step-through-cps (cdr program) (HandleWhile M-State (GetFirstStatement program)) return)]
+     [(IsCodeBlockStatement (GetFirstStatement program)) (step-through-cps (cdr program) (HandleCodeBlock M-State (GetFirstStatement program)) return) ]
      [(IsReturnStatement (GetFirstStatement program)) (step-through-cps '() (HandleReturn M-State (GetFirstStatement program)) return)]; just returns
      [else (return M-State)])));if the program ends without a return statement, just print M-State so you can see all the variables
 
