@@ -4,6 +4,14 @@
 ;Orion Follett
 ;Prithik Karthikeyan
 
+;TODO
+;CHANGE THE WAY RETURN WORKS TO BE MORE FLEXIBLE AND REUSABLE FOR FUTURE, changing return will affect if, code blocks, and while statements
+;-return doesn't always work correctly out of code blocks
+;-test code blocks and scoping with if and while loops, fix if and while to work more intuitively with code blocks
+;-try catch finally, with returns
+;break, continue, throw, "real return"
+
+
 ;Part 2 General Idea/ List of Features
 ;1. code blocks and scoping
 ;2. break, continue, throw
