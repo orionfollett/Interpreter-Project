@@ -42,8 +42,8 @@
   (lambda (l1 l2 return)
     (if (null? l1)
         (return l2)
-        (append-cps (cdr l1) l2 (lambda(v) (return (cons (car l1) v))))
-       )))
+        (append-cps (cdr l1) l2 (lambda(v) (return (cons (car l1) v)))))))
+       
 
 ;helper function that flattens a list of lists to just a normal list
 (define flatten
@@ -67,32 +67,28 @@
       [(null? lis) '()]
       [(pair? (car lis)) (cons (replaceall* t r (car lis)) (replaceall* t r (cdr lis)))]
       [(eq? t (car lis)) (cons r (replaceall* t r (cdr lis)))]
-      [else (cons (car lis) (replaceall* t r (cdr lis)))]
-      )))
-
+      [else (cons (car lis) (replaceall* t r (cdr lis)))])))
+      
 ;takes an atom, returns true if it is an integer operation
 (define int-operation?
   (lambda (x)
     (if (or (eq? x '+) (eq? x '-) (eq? x '/) (eq? x '*) (eq? x '%))
         #t
-        #f
-    )))
+        #f)))
 
 ;takes an atom, returns true if it is a bool operation
 (define bool-operation?
   (lambda (x)
     (if (or (eq? x '>) (eq? x '<) (eq? x '==) (eq? x '<=) (eq? x '>=) (eq? x '!=) (eq? x '&&) (eq? x '||) (eq? x '!))
         #t
-        #f
-    )))
+        #f)))
 
 ;takes an atom, returns true if it is an integer or a boolean operation
 (define operation?
   (lambda (x)
     (if (or (bool-operation? x) (int-operation? x))
         #t
-        #f
-    )))
+        #f)))
 
 ;contains-bool -> takes in a flattened expression, if the expression has any of the boolean operators in it return true, else return false
 (define contains-bool-operator
@@ -105,23 +101,19 @@
 ;var? -> returns true if x is not a keyword (true or false), operation, or number 
 (define var?
   (lambda (x)
-     (not (or (operation? x) (eq? x 'true)  (eq? x 'false) (number? x)))
-    ))
-
+     (not (or (operation? x) (eq? x 'true)  (eq? x 'false) (number? x)))))    
 
 ;custom-bool-literal? -> takes an atom, returns #t if it is a valid bool literal
 (define custom-bool-literal?
   (lambda (x)
-    (or (eq? x 'true) (eq? x 'false))
-    ))
+    (or (eq? x 'true) (eq? x 'false))))
 
 ;bool? -> takes an atom, returns #t if it is either #t or #f, returns false if it isnt
 (define bool?
   (lambda (x)
     (cond
       [(or (eq? x #t) (eq? x #f)) #t]
-      [else #f]
-    )))
+      [else #f])))
 
 ;ConvertToSchemeBool - takes val that is either 'true or 'false, returns #t if it is 'true, #f is it is 'false
 (define ConvertToSchemeBool
@@ -129,8 +121,7 @@
     (cond
       [(eq? val 'true) #t]
       [(eq? val 'false) #f]
-      [else (error "Value that is not a bool trying to be converted into a bool!")]
-    )))
+      [else (error "Value that is not a bool trying to be converted into a bool!")])))
 
 ;ConvertToCustomBool - takes val that is either #t or #f converts it to 'true or 'false
 (define ConvertToCustomBool
@@ -138,8 +129,7 @@
     (cond
       [(eq? val #t) 'true]
       [(eq? val #f) 'false]
-      [else (error "Value that is not a bool trying to be converted into a bool!")]
-    )))
+      [else (error "Value that is not a bool trying to be converted into a bool!")])))
 
 ;*******************************HELPER FUNCTIONS FOR M_INTEGER**************************
 
@@ -307,7 +297,7 @@
 ;AddNewBinding -> takes in M-State, variable name, variable value, returns M-State with new binding
 (define AddNewBinding
   (lambda (M-State varName varVal)
-    (cons (list varName (M-Value M-State varVal)) M-State)))
+    (cons M-State (list varName (M-Value M-State varVal)))))
 
 ;RemoveBinding -> takes in M-State, variable name returns M-State without that variable
 ;If the binding doesnt exist, M-State is unchanged
