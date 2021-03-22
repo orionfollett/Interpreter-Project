@@ -234,7 +234,7 @@
   (lambda (M-State expression varList)
     (cond
       [(null? varList) expression]
-      [(IsVarUndeclared M-State (car varList)) (error " variable not defined in an expression variable name: " (car varList))]
+      [(IsVarUndeclared? M-State (car varList)) (error " variable not defined in an expression variable name: " (car varList))]
       [else (MV_ConvertVarToVal* M-State (replaceall* (car varList) (LookupValue M-State (car varList)) expression) (cdr varList))])))
 
 ;MV_NoProcessingNeeded - takes in val, returns true if it is a value, false if it needs further processing
@@ -256,7 +256,7 @@
       [(MV_NoProcessingNeeded val) val]
       [(list? val) (M-Expression (MV_ConvertVarToVal* M-State val (MV_ListOfVars (flatten val))))] ;Evaluate the expression
       [(custom-bool-literal? val) (ConvertToSchemeBool val)]
-      [(IsVarUndeclared M-State val) (error "Undeclared variable!" val)] ;undeclared variable
+      [(IsVarUndeclared? M-State val) (error "Undeclared variable!" val)] ;undeclared variable
       [else (LookupValue M-State val)]))) ;declared variable that needs to be resolved to a value
 
 
@@ -287,32 +287,13 @@
       [else (car (cdr (GetFirstBinding M-State)))])))
 
 ;IsNameUnused -> takes in M-State and variable name, makes sure name is not in the list
-(define IsVarUndeclared
+(define IsVarUndeclared?
   (lambda (M-State name)
     (cond
       [(null? M-State) #t]
+      [(IsNewLayer? M-State) (and (IsVarUndeclared? (GetFirstLayer M-State) name) (IsVarUndeclared? (RemoveLayer M-State) name))]
       [(eq? (GetFirstBindingName M-State) name) #f]
-      [else (IsVarUndeclared (cdr M-State) name)])))
-
-;AddNewBinding -> takes in M-State, variable name, variable value, returns M-State with new binding
-(define AddNewBinding
-  (lambda (M-State varName varVal)
-    (cons M-State (list varName (M-Value M-State varVal)))))
-
-;RemoveBinding -> takes in M-State, variable name returns M-State without that variable
-;If the binding doesnt exist, M-State is unchanged
-(define RemoveBinding
-  (lambda (M-State varName)
-    (cond
-     [(null? M-State) M-State]
-     [(eq? (GetFirstBindingName M-State) varName) (cdr M-State)]
-     [else (cons (GetFirstBinding M-State) (RemoveBinding (cdr M-State) varName))])))
-
-;ChangeBinding -> takes in M-State, variable name, new variable value, returns M-State with old variable value replaced by new variable value
-;If the binding doesnt exist, it creates a new one
-(define ChangeBinding
-  (lambda (M-State varName varVal)
-    (AddNewBinding (RemoveBinding M-State varName) varName varVal)))
+      [else (IsVarUndeclared? (cdr M-State) name)])))
 
 ;IsNewLayer? takes in M-State, returns true if it has a new layer on it, false otherwise
 (define IsNewLayer?
@@ -321,19 +302,67 @@
       [(null? M-State) #f]
       [(null? (car M-State)) #t]
       [(list? (car (car M-State))) #t]
-      [else #f]
-    )))
+      [else #f])))
 
 ;takes M-State returns M-State with the outermost layer removed
 (define RemoveLayer
  (lambda(M-State)
-  (cdr M-State)
-   ))
+  (cdr M-State)))
 
 ;takes M-State that is multilayered, returns first layer
 (define GetFirstLayer
   (lambda(M-State)
     (car M-State)))
+
+;AddNewBinding -> takes in M-State, variable name, variable value, returns M-State with new binding
+;if M-State has multiple layers, it puts it in the deepest layer because that is the current active layer
+(define AddNewBinding
+  (lambda (M-State varName varVal)
+    (cond
+      [(IsNewLayer? M-State) (cons (AddNewBinding (GetFirstLayer M-State) varName varVal) (RemoveLayer M-State))]
+      [else (append M-State (list (list varName varVal)))])))
+
+;RemoveBinding -> takes in M-State, variable name returns M-State without that variable
+;If the binding doesnt exist, M-State is unchanged
+(define RemoveBinding
+  (lambda (M-State varName)
+    (cond
+     [(null? M-State) M-State]
+     [(IsNewLayer? M-State) (cons (RemoveBinding (GetFirstLayer M-State) varName) (RemoveBinding (RemoveLayer M-State) varName))]
+     [(eq? (GetFirstBindingName M-State) varName) (cdr M-State)]
+     [else (cons (GetFirstBinding M-State) (RemoveBinding (cdr M-State) varName))])))
+
+;PopFirstBinding - removes first binding
+(define PopFirstBinding
+(lambda (M-State)
+(cdr M-State)))
+
+;ChangeFirstBindingValue - takes in M-State and a value, changes the value of the first binding and returns the updated M-State
+;assumes M-State has no layers and is not empty
+(define ChangeFirstBindingValue
+  (lambda (M-State varVal)
+    (cons (list (GetFirstBindingName M-State) varVal) (PopFirstBinding M-State))))
+
+;ChangeBinding -> takes in M-State, variable name, new variable value, returns M-State with old variable value replaced by new variable value
+;If the binding doesnt exist, it creates a new one
+
+(define ChangeBinding
+  (lambda (M-State varName varVal)
+    (cond
+      [(IsVarUndeclared? M-State varName) (AddNewBinding M-State varName varVal)]
+      [else (ChangeBinding-Exists M-State varName varVal)]
+      )))
+
+;changes the value of a binding, knowing that the binding exists
+(define ChangeBinding-Exists
+  (lambda (M-State varName varVal)
+    (cond
+     [(null? M-State) '()]
+     [(IsNewLayer? M-State) (cons (ChangeBinding (GetFirstLayer M-State) varName varVal) (ChangeBinding (RemoveLayer M-State) varName varVal))]
+     [(eq? (GetFirstBindingName M-State) varName) (ChangeFirstBindingValue M-State varVal)]
+     [else (cons (GetFirstBinding M-State) (ChangeBinding (cdr M-State) varName varVal))])))
+
+;[else (AddNewBinding (RemoveBinding M-State varName) varName varVal)])))
 
 ;takes in two atoms, returns null if they are both null, or the value of the one that is not null
 (define ResolveMultiLayerSearch
@@ -374,7 +403,7 @@
 (define HandleVarDec
   (lambda (M-State statement)
     (cond
-      [(IsVarUndeclared M-State (VD_GetVarName statement)) (AddNewBinding M-State (VD_GetVarName statement) (VD_GetVarValue statement))]
+      [(IsVarUndeclared? M-State (VD_GetVarName statement)) (AddNewBinding M-State (VD_GetVarName statement) (M-Value M-State (VD_GetVarValue statement)))]
       [else (error "Error: " (VD_GetVarName statement) "variable already declared")]
     )))
 
@@ -397,7 +426,7 @@
 (define HandleAssign
   (lambda (M-State statement)
     (cond
-      [(IsVarUndeclared M-State (AS_GetVarName statement)) (error (AS_GetVarName statement) "Assignment before declaration!")]
+      [(IsVarUndeclared? M-State (AS_GetVarName statement)) (error (AS_GetVarName statement) "Assignment before declaration!")]
       [else (ChangeBinding M-State (AS_GetVarName statement) (M-Value M-State (AS_GetVarVal statement)))])))
 
 
@@ -505,11 +534,12 @@
   (lambda(statement)
     (cdr statement)))
 
-
 ;takes a code block beginning with begin statement, returns M-State after resolving that code block
 (define HandleCodeBlock
   (lambda(M-State statement)
-    (CB_RemoveLayer(step-through (CB_AddLayer M-State) (CB_GetBody statement)))))
+    (cond
+    [(not (list? M-State)) (list (list 'return M-State))];program returned during the loop, program returns a single value so put it back in proper form
+    [else (CB_RemoveLayer(step-through (CB_GetBody statement) (CB_AddLayer M-State)))])))
 
 
 ;**************************parse tree step through helper functions: ***********************************
@@ -524,50 +554,55 @@
 ;IsVarDecStatement takes in a single statement, returns true or false depending on if it is a variable decalaration or not
 (define IsVarDecStatement
   (lambda (statement)
-    (if (eq? (car statement) 'var)
-      #t
-      #f)))
+    (cond
+      [(null? statement) #f]
+      [(eq? (car statement) 'var) #t]
+      [else #f])))
 
 ;IsAssignStatement takes in a single statement, returns true or false depending on if it is an assignment
 (define IsAssignStatement
   (lambda (statement)
-    (if (eq? (car statement) '=)
-        #t
-        #f)))
+    (cond
+      [(null? statement) #f]
+      [(eq? (car statement) '=) #t]
+      [else #f])))
 
 ;IsIfStatement takes in a single statement, returns true if it is an if statement
 (define IsIfStatement
   (lambda (statement)
-    (if (eq? (car statement) 'if)
-        #t
-        #f)))
+    (cond
+      [(null? statement) #f]
+      [(eq? (car statement) 'if) #t]
+      [else #f])))
 
 ;IsWhileStatement takes in a single statement, returns true if it is an if statement
 (define IsWhileStatement
   (lambda (statement)
-    (if (eq? (car statement) 'while)
-        #t
-        #f)))
+    (cond
+      [(null? statement) #f]
+      [(eq? (car statement) 'while) #t]
+      [else #f])))
 
 ;IsReturnStatement takes in a single statement, returns true if it is a return statement
 (define IsReturnStatement
   (lambda (statement)
-  (if (eq? (car statement) 'return)
-        #t
-        #f)))
+    (cond
+      [(null? statement) #f]
+      [(eq? (car statement) 'return) #t]
+      [else #f])))
 
 ;IsCodeBlock takes in a single statement, returns true if it is a begin statement
 (define IsCodeBlockStatement
   (lambda (statement)
-  (if (eq? (car statement) 'begin)
-        #t
-        #f)))
+    (cond
+      [(null? statement) #f]
+      [(eq? (car statement) 'begin) #t]
+      [else #f])))
 
 ;IsDone -> takes in M-State, returns true if M-State has a return variable
 (define IsDone
   (lambda (M-State)
-    (not (IsVarUndeclared M-State 'return))
-    ))
+    (not (IsVarUndeclared? M-State 'return))))
 
 ;takes in the return val, returns the return value in proper form
 (define HandleDone
@@ -628,4 +663,4 @@
 ;(eq? (interpret "t19.txt") 128)
 ;(eq? (interpret "t20.txt") 12)
 
-;(interpret "testProgram.txt")
+(interpret "t.txt")
