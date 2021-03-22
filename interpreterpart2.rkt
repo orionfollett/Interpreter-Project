@@ -24,14 +24,28 @@
 
 ;********************************General Helper Functions********************************
 
+;append but cps style
+(define append-cps
+  (lambda (l1 l2 return)
+    (if (null? l1)
+        (return l2)
+        (append-cps (cdr l1) l2 (lambda(v) (return (cons (car l1) v))))
+       )))
+
 ;helper function that flattens a list of lists to just a normal list
 (define flatten
   (lambda (lis)
+   (flatten-cps lis (lambda(v) v))))
+
+;cps style flatten
+(define flatten-cps
+  (lambda (lis return)
   (cond
-    [(null? lis) '()]
-    [(pair? lis) (append (flatten (car lis)) (flatten (cdr lis)))]
-    [else (list lis)]
-    )))
+    [(null? lis) (return lis)]
+    [(pair? lis) (flatten-cps (cdr lis)
+                              (lambda(v1) (flatten-cps (car lis)
+                                                       (lambda(v2) (append-cps v2 v1 return)))))]
+    [else (return (list lis))])))
 
 ;takes a list of lists, replaces all elements equal to t with r, returns new list
 (define replaceall*
@@ -501,15 +515,30 @@
 ;it is used to step through each line of the program, it returns the return value if the program returned, or M-State if it didn't
 (define step-through
   (lambda (program M-State)
-    (cond
-      [(IsDone M-State) (HandleDone (LookupValue M-State 'return))];if program returned this ends the program and returns the return value
-      [(null? program) M-State]; need to check this to prevent errors with checking the cdr or car of an empty list, if program ends unexpectedly, will print M-State
-      [(IsVarDecStatement (GetFirstStatement program)) (step-through (cdr program) (HandleVarDec M-State (GetFirstStatement program)))]
-      [(IsAssignStatement (GetFirstStatement program)) (step-through (cdr program) (HandleAssign M-State (GetFirstStatement program)))]
-      [(IsIfStatement (GetFirstStatement program)) (step-through (cdr program) (HandleIf M-State (GetFirstStatement program)))]
-      [(IsWhileStatement (GetFirstStatement program)) (step-through (cdr program) (HandleWhile M-State (GetFirstStatement program)))]
-      [(IsReturnStatement (GetFirstStatement program)) (step-through '() (HandleReturn M-State (GetFirstStatement program)))]; just returns
-      [else M-State])));if the program ends without a return statement, just print M-State so you can see all the variables
+   (step-through-cps program M-State (lambda(v) v))))
+    ;(cond
+     ; [(IsDone M-State) (HandleDone (LookupValue M-State 'return))];if program returned this ends the program and returns the return value
+      ;[(null? program) M-State]; need to check this to prevent errors with checking the cdr or car of an empty list, if program ends unexpectedly, will print M-State
+      ;[(IsVarDecStatement (GetFirstStatement program)) (step-through (cdr program) (HandleVarDec M-State (GetFirstStatement program)))]
+      ;[(IsAssignStatement (GetFirstStatement program)) (step-through (cdr program) (HandleAssign M-State (GetFirstStatement program)))]
+      ;[(IsIfStatement (GetFirstStatement program)) (step-through (cdr program) (HandleIf M-State (GetFirstStatement program)))]
+      ;[(IsWhileStatement (GetFirstStatement program)) (step-through (cdr program) (HandleWhile M-State (GetFirstStatement program)))]
+      ;[(IsReturnStatement (GetFirstStatement program)) (step-through '() (HandleReturn M-State (GetFirstStatement program)))]; just returns
+      ;[else M-State])));if the program ends without a return statement, just print M-State so you can see all the variables
+
+
+;step-through-cps is the same as step-through but in cps style
+(define step-through-cps
+  (lambda (program M-State return)
+   (cond
+     [(IsDone M-State) (return (HandleDone (LookupValue M-State 'return)))];if program returned this ends the program and returns the return value
+     [(null? program) (return M-State)]; need to check this to prevent errors with checking the cdr or car of an empty list, if program ends unexpectedly, will print M-State
+     [(IsVarDecStatement (GetFirstStatement program)) (step-through-cps (cdr program) (HandleVarDec M-State (GetFirstStatement program)) return)]
+     [(IsAssignStatement (GetFirstStatement program)) (step-through-cps (cdr program) (HandleAssign M-State (GetFirstStatement program)) return)]
+     [(IsIfStatement (GetFirstStatement program)) (step-through-cps (cdr program) (HandleIf M-State (GetFirstStatement program)) return)]
+     [(IsWhileStatement (GetFirstStatement program)) (step-through-cps (cdr program) (HandleWhile M-State (GetFirstStatement program)) return)]
+     [(IsReturnStatement (GetFirstStatement program)) (step-through-cps '() (HandleReturn M-State (GetFirstStatement program)) return)]; just returns
+     [else (return M-State)])));if the program ends without a return statement, just print M-State so you can see all the variables
 
 ;Main Interpreter function
 
@@ -532,14 +561,14 @@
 ;(eq? (interpret "t8.txt") 10)
 ;(eq? (interpret "t9.txt") 5)
 ;(eq? (interpret "t10.txt") -39)
-;(eq? (interpret "t12.txt") ) should give error
-;(eq? (interpret "t13.txt") ) should give error
-;(eq? (interpret "t14.txt") ) should give error
-;(eq? (interpret "t15.txt") ) should give error
+;(eq? (interpret "t12.txt") ); should give error
+;(eq? (interpret "t13.txt") ) ;should give error
+;(eq? (interpret "t14.txt") ) ;should give error
+;(eq? (interpret "t15.txt") ) ;should give error
 ;(eq? (interpret "t16.txt") 100)
 ;(eq? (interpret "t17.txt") 'false)
 ;(eq? (interpret "t18.txt") 'true)
 ;(eq? (interpret "t19.txt") 128)
 ;(eq? (interpret "t20.txt") 12)
 
-(interpret "testProgram.txt")
+;(interpret "testProgram.txt")
