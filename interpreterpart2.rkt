@@ -471,12 +471,12 @@
 (define HandleIf
   (lambda (M-State statement)
     (cond
-    [(not (list? M-State)) (list (list 'return M-State))];program returned during the if statement, program returns a single value so put it back in proper form
+    ;[(IsDone? M-State) M-State];program returned during the if statement, program returns a single value so put it back in proper form
     [(null? statement) M-State];none of the if statements were true
-    [(M-Value M-State (I_GetIfCondition statement)) (HandleIf (step-through (I_GetIfBody statement) M-State) '())] ;if statement was true, so run the body
+    [(M-Value M-State (I_GetIfCondition statement)) (step-through (I_GetIfBody statement) M-State)] ;if statement was true, so run the body
     [(and (not (null? (I_GetNext statement))) (I_IsIf? (I_GetNext statement))) (HandleIf M-State (I_GetNext statement))] ;if statement was false, but there are more ifs to check check the next one
     [(null? (I_GetNext statement)) M-State];nothing left to check, return the state
-    [else (HandleIf (step-through (I_GetNext statement) M-State) '())];there is an else statement remaining, run that code, then return the updated M-State
+    [else (step-through (I_GetNext statement) M-State)];there is an else statement remaining, run that code, then return the updated M-State
     )))
 
 
@@ -505,7 +505,7 @@
 (define HandleWhile
   (lambda (M-State statement)
    (cond
-    [(not (list? M-State)) (list (list 'return M-State))];program returned during the loop, program returns a single value so put it back in proper form
+    [(IsDone? M-State) M-State];program returned during the loop, dont run the loop anymore
     [(W_CheckWhileCondition M-State statement) (HandleWhile (step-through (W_GetWhileBody statement) M-State) statement)]
     [else M-State]
     )))
@@ -542,13 +542,18 @@
   (lambda(statement)
     (cdr statement)))
 
+;helper function to check if program returned inside block, if it did just return M-State, if it didn't then remove the variables not in scope anymore and return
+(define CB_CodeReturned
+  (lambda (M-State)
+    (cond
+      [(IsDone? M-State) M-State]
+      [else (CB_RemoveLayer M-State)]
+    )))
+
 ;takes a code block beginning with begin statement, returns M-State after resolving that code block
 (define HandleCodeBlock
   (lambda(M-State statement)
-    (cond
-    [(not (list? M-State)) (list (list 'return M-State))];program returned during the loop, program returns a single value so put it back in proper form
-    [else (CB_RemoveLayer(step-through (CB_GetBody statement) (CB_AddLayer M-State)))])))
-
+     (CB_CodeReturned (step-through (CB_GetBody statement) (CB_AddLayer M-State)))))
 
 ;**************************parse tree step through helper functions: ***********************************
 
@@ -608,7 +613,7 @@
       [else #f])))
 
 ;IsDone -> takes in M-State, returns true if M-State has a return variable
-(define IsDone
+(define IsDone?
   (lambda (M-State)
     (not (IsVarUndeclared? M-State 'return))))
 
@@ -620,6 +625,13 @@
       [(eq? #f returnVal) 'false]
       [else returnVal])))
 
+;ReturnProgram - takes in the result of the program, decides what to output at the end
+(define ReturnProgram
+  (lambda(result-M-State)
+    (cond
+      [(IsDone? result-M-State) (HandleDone (LookupValue result-M-State 'return))]
+      [else result-M-State])))
+
 ;step-through takes program: the parsed program, M-state: a list of bindings
 ;it is used to step through each line of the program, it returns the return value if the program returned, or M-State if it didn't
 (define step-through
@@ -630,14 +642,14 @@
 (define step-through-cps
   (lambda (program M-State return)
    (cond
-     [(IsDone M-State) (return (HandleDone (LookupValue M-State 'return)))];if program returned this ends the program and returns the return value
-     [(null? program) (return M-State)]; need to check this to prevent errors with checking the cdr or car of an empty list, if program ends unexpectedly, will print M-State
+     ; need to check this first to prevent errors with checking the cdr or car of an empty list, if program ends unexpectedly, will print M-State
+     [(or (null? program) (IsDone? M-State)) (return M-State)];if program returned this ends the program and returns the return value
      [(IsVarDecStatement (GetFirstStatement program)) (step-through-cps (cdr program) (HandleVarDec M-State (GetFirstStatement program)) return)]
      [(IsAssignStatement (GetFirstStatement program)) (step-through-cps (cdr program) (HandleAssign M-State (GetFirstStatement program)) return)]
      [(IsIfStatement (GetFirstStatement program)) (step-through-cps (cdr program) (HandleIf M-State (GetFirstStatement program)) return)]
      [(IsWhileStatement (GetFirstStatement program)) (step-through-cps (cdr program) (HandleWhile M-State (GetFirstStatement program)) return)]
      [(IsCodeBlockStatement (GetFirstStatement program)) (step-through-cps (cdr program) (HandleCodeBlock M-State (GetFirstStatement program)) return) ]
-     [(IsReturnStatement (GetFirstStatement program)) (step-through-cps '() (HandleReturn M-State (GetFirstStatement program)) return)]; just returns
+     [(IsReturnStatement (GetFirstStatement program)) (HandleReturn M-State (GetFirstStatement program))]; just returns M-State with only return value
      [else (return M-State)])));if the program ends without a return statement, just print M-State so you can see all the variables
 
 ;Main Interpreter function
@@ -647,33 +659,36 @@
 
 (define interpret
   (lambda (filename)
-    (step-through (parser filename) '())))
+     (ReturnProgram (step-through (parser filename) '()))))
+
+
+(interpret "t.txt")
 
 ;Test Cases:
 ;
-;(eq? (interpret "t1.txt") 150)
-;(eq? (interpret "t2.txt") -4)
-;(eq? (interpret "t3.txt") 10)
-;(eq? (interpret "t4.txt") 16)
-;(eq? (interpret "t5.txt") 220)
-;(eq? (interpret "t6.txt") 5)
-;(eq? (interpret "t7.txt") 6)
-;(eq? (interpret "t8.txt") 10)
-;(eq? (interpret "t9.txt") 5)
-;(eq? (interpret "t10.txt") -39)
+(eq? (interpret "t1.txt") 150)
+(eq? (interpret "t2.txt") -4)
+(eq? (interpret "t3.txt") 10)
+(eq? (interpret "t4.txt") 16)
+(eq? (interpret "t5.txt") 220)
+(eq? (interpret "t6.txt") 5)
+(eq? (interpret "t7.txt") 6)
+(eq? (interpret "t8.txt") 10)
+(eq? (interpret "t9.txt") 5)
+(eq? (interpret "t10.txt") -39)
 ;(eq? (interpret "t12.txt") ); should give error
 ;(eq? (interpret "t13.txt") ) ;should give error
 ;(eq? (interpret "t14.txt") ) ;should give error
 ;(eq? (interpret "t15.txt") ) ;should give error
-;(eq? (interpret "t16.txt") 100)
-;(eq? (interpret "t17.txt") 'false)
-;(eq? (interpret "t18.txt") 'true)
-;(eq? (interpret "t19.txt") 128)
-;(eq? (interpret "t20.txt") 12)
+(eq? (interpret "t16.txt") 100)
+(eq? (interpret "t17.txt") 'false)
+(eq? (interpret "t18.txt") 'true)
+(eq? (interpret "t19.txt") 128)
+(eq? (interpret "t20.txt") 12)
 ;(eq? (interpret "t21.txt") 20)
-;(eq? (interpret "t22.txt") 164) does not work right now
+;(eq? (interpret "t22.txt") 164) ;does not work right now
 ;(eq? (interpret "t23.txt") 32)
-;(eq? (interpret "t24.txt") 2) does not work right now //returns 1 
+;(eq? (interpret "t24.txt") 2) ;does not work right now //returns 1 
 
 
-(interpret "t24.txt")
+;(interpret "t.txt")
