@@ -450,7 +450,7 @@
 ;I_GetIfBody takes in if statement returns if body
 (define I_GetIfBody
   (lambda (statement)
-    (car (cdr (cdr statement)))))
+    (list (car (cdr (cdr statement))))))
 
 ;I_GetNext takes in if statement returns next if condition (should return either the else body or an empty list if there isnt one)
 (define I_GetNext
@@ -498,7 +498,7 @@
 ;W_GetWhileBody takes in a while statement and returns the body of the loop
 (define W_GetWhileBody
   (lambda (statement)
-    (car (cdr (cdr statement)))
+    (list (car (cdr (cdr statement))))
     ))
 
 ;HandleWhile -> Takes in M-State and a while statement, returns updated M-State
@@ -685,10 +685,10 @@
 (eq? (interpret "t18.txt") 'true)
 (eq? (interpret "t19.txt") 128)
 (eq? (interpret "t20.txt") 12)
-;(eq? (interpret "t21.txt") 20)
-;(eq? (interpret "t22.txt") 164) ;does not work right now
-;(eq? (interpret "t23.txt") 32)
-;(eq? (interpret "t24.txt") 2) ;does not work right now //returns 1 
+(eq? (interpret "t21.txt") 20)
+(eq? (interpret "t22.txt") 164)
+(eq? (interpret "t23.txt") 32)
+(eq? (interpret "t24.txt") 2)
 
 
 ;(interpret "t.txt")
