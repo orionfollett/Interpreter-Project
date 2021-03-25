@@ -670,10 +670,5 @@
 ;(eq? (interpret "t18.txt") 'true)
 ;(eq? (interpret "t19.txt") 128)
 ;(eq? (interpret "t20.txt") 12)
-;(eq? (interpret "t21.txt") 20)
-;(eq? (interpret "t22.txt") 164) does not work right now
-;(eq? (interpret "t23.txt") 32)
-;(eq? (interpret "t24.txt") 2) does not work right now //returns 1 
 
-
-(interpret "t24.txt")
+(interpret "t.txt")
