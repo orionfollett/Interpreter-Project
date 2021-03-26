@@ -1,12 +1,16 @@
-{
+var x = 0;
 
-var counter = 1;
-var result = 0;
 
-while(counter <= 10)
+while(x < 10)
 {
-	var y = 2 * counter;
-	result = result + y;
-	counter = counter + 1;
+	if(x == 5)
+	{
+		break;
+	}	
+	x = x + 1;
 }
-}
+
+return x;
+
+
+

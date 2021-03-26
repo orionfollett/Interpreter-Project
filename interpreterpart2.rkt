@@ -13,7 +13,6 @@
 
 
 ;Part 2 General Idea/ List of Features
-;1. code blocks and scoping
 ;2. break, continue, throw
 ;3. try catch finally 
 ;
@@ -199,8 +198,8 @@
       [(and (MI_IsUnary expression)(eq? (MI_GetOperation expression) '!)) (not (M-Bool (MI_GetFirstOperand expression)))]
       [(eq? (MI_GetOperation expression) '&&) (and (M-Bool(MI_GetFirstOperand expression)) (M-Bool(MI_GetSecondOperand expression)))]
       [(eq? (MI_GetOperation expression) '||) (or (M-Bool(MI_GetFirstOperand expression)) (M-Bool(MI_GetSecondOperand expression)))]
-      ;[else (error "non bool tried to use boolean operators")])))
       [else (M-Compare expression)])))
+
 ;M-Compare
 ;evaluates a comparison expression that has comparison operators numbers, and integer expressions, outputs true or false
 ;takes form '(operation expression expression) possible operations:  
@@ -437,7 +436,6 @@
       [(IsVarUndeclared? M-State (AS_GetVarName statement)) (error (AS_GetVarName statement) "Assignment before declaration!")]
       [else (ChangeBinding M-State (AS_GetVarName statement) (M-Value M-State (AS_GetVarVal statement)))])))
 
-
 ;****************************If Statement functions****************************************************
 
 ;I_ indicates it is a helper function for HandleIf, it should only be used for HandleIf
@@ -469,14 +467,13 @@
 
 ;HandleIf -> Takes in M-State and an if statement, returns updated M-State
 (define HandleIf
-  (lambda (M-State statement)
+  (lambda (M-State statement return break)
     (cond
-    ;[(IsDone? M-State) M-State];program returned during the if statement, program returns a single value so put it back in proper form
     [(null? statement) M-State];none of the if statements were true
-    [(M-Value M-State (I_GetIfCondition statement)) (step-through (I_GetIfBody statement) M-State)] ;if statement was true, so run the body
+    [(M-Value M-State (I_GetIfCondition statement)) (step-through-cc (I_GetIfBody statement) M-State return break)] ;if statement was true, so run the body
     [(and (not (null? (I_GetNext statement))) (I_IsIf? (I_GetNext statement))) (HandleIf M-State (I_GetNext statement))] ;if statement was false, but there are more ifs to check check the next one
     [(null? (I_GetNext statement)) M-State];nothing left to check, return the state
-    [else (step-through (I_GetNext statement) M-State)];there is an else statement remaining, run that code, then return the updated M-State
+    [else (step-through-cc (I_GetNext statement) M-State return break)];there is an else statement remaining, run that code, then return the updated M-State
     )))
 
 
@@ -501,14 +498,22 @@
     (list (car (cdr (cdr statement))))
     ))
 
-;HandleWhile -> Takes in M-State and a while statement, returns updated M-State
-(define HandleWhile
-  (lambda (M-State statement)
+;IsDone -> takes in M-State, returns true if M-State has a return variable
+(define IsDone
+  (lambda (M-State)
+    (not (IsVarUndeclared? M-State 'return))))
+
+(define loop
+  (lambda(M-State statement return break next)
    (cond
-    [(IsDone? M-State) M-State];program returned during the loop, dont run the loop anymore
-    [(W_CheckWhileCondition M-State statement) (HandleWhile (step-through (W_GetWhileBody statement) M-State) statement)]
-    [else M-State]
-    )))
+    [(W_CheckWhileCondition M-State statement) (loop (step-through-cc (W_GetWhileBody statement) M-State return break) statement return break next)]
+    [else M-State])));loop condition is no longer true, loop is done
+
+;HandleWhile -> Takes in M-State and a while statement and a break continuation, returns updated M-State
+(define HandleWhile
+ (lambda (M-State statement return break next)
+   (loop M-State statement return break next)
+   ))
 
 
 ;******************************Handle Return Statement********************************************
@@ -521,9 +526,9 @@
 
 ;HandleReturn -> returns the return statement in proper form
 (define HandleReturn
-  (lambda (M-State statement)
-    (list (list 'return (M-Value M-State (R_GetReturn statement))))))
-
+  (lambda (M-State statement return)
+    ;(list (list 'return (M-Value M-State (R_GetReturn statement))))))
+    (return (M-Value M-State (R_GetReturn statement)))))
 
 ;****************************************Handle Code Block**********************************************
 
@@ -542,18 +547,10 @@
   (lambda(statement)
     (cdr statement)))
 
-;helper function to check if program returned inside block, if it did just return M-State, if it didn't then remove the variables not in scope anymore and return
-(define CB_CodeReturned
-  (lambda (M-State)
-    (cond
-      [(IsDone? M-State) M-State]
-      [else (CB_RemoveLayer M-State)]
-    )))
-
 ;takes a code block beginning with begin statement, returns M-State after resolving that code block
 (define HandleCodeBlock
-  (lambda(M-State statement)
-     (CB_CodeReturned (step-through (CB_GetBody statement) (CB_AddLayer M-State)))))
+  (lambda(M-State statement return break)
+     (CB_RemoveLayer (step-through-cc (CB_GetBody statement) (CB_AddLayer M-State) return break))))
 
 ;**************************parse tree step through helper functions: ***********************************
 
@@ -565,7 +562,7 @@
      program)))
 
 ;IsVarDecStatement takes in a single statement, returns true or false depending on if it is a variable decalaration or not
-(define IsVarDecStatement
+(define IsVarDecStatement?
   (lambda (statement)
     (cond
       [(null? statement) #f]
@@ -573,7 +570,7 @@
       [else #f])))
 
 ;IsAssignStatement takes in a single statement, returns true or false depending on if it is an assignment
-(define IsAssignStatement
+(define IsAssignStatement?
   (lambda (statement)
     (cond
       [(null? statement) #f]
@@ -581,7 +578,7 @@
       [else #f])))
 
 ;IsIfStatement takes in a single statement, returns true if it is an if statement
-(define IsIfStatement
+(define IsIfStatement?
   (lambda (statement)
     (cond
       [(null? statement) #f]
@@ -589,7 +586,7 @@
       [else #f])))
 
 ;IsWhileStatement takes in a single statement, returns true if it is an if statement
-(define IsWhileStatement
+(define IsWhileStatement?
   (lambda (statement)
     (cond
       [(null? statement) #f]
@@ -597,7 +594,7 @@
       [else #f])))
 
 ;IsReturnStatement takes in a single statement, returns true if it is a return statement
-(define IsReturnStatement
+(define IsReturnStatement?
   (lambda (statement)
     (cond
       [(null? statement) #f]
@@ -605,52 +602,64 @@
       [else #f])))
 
 ;IsCodeBlock takes in a single statement, returns true if it is a begin statement
-(define IsCodeBlockStatement
+(define IsCodeBlockStatement?
   (lambda (statement)
     (cond
       [(null? statement) #f]
       [(eq? (car statement) 'begin) #t]
       [else #f])))
 
-;IsDone -> takes in M-State, returns true if M-State has a return variable
-(define IsDone?
-  (lambda (M-State)
-    (not (IsVarUndeclared? M-State 'return))))
+;IsBreakStatement? takes in a single statement, returns true if it is a break statement
+(define IsBreakStatement?
+  (lambda (statement)
+    (cond
+      [(null? statement) #f]
+      [(eq? (car statement) 'break) #t]
+      [else #f])))
 
-;takes in the return val, returns the return value in proper form
-(define HandleDone
-  (lambda (returnVal)
+;ReturnProgram - takes in the result of the program, decides what to output at the end
+(define FormatReturn
+   (lambda (returnVal)
     (cond
       [(eq? #t returnVal) 'true]
       [(eq? #f returnVal) 'false]
       [else returnVal])))
 
-;ReturnProgram - takes in the result of the program, decides what to output at the end
-(define ReturnProgram
-  (lambda(result-M-State)
-    (cond
-      [(IsDone? result-M-State) (HandleDone (LookupValue result-M-State 'return))]
-      [else result-M-State])))
-
 ;step-through takes program: the parsed program, M-state: a list of bindings
 ;it is used to step through each line of the program, it returns the return value if the program returned, or M-State if it didn't
 (define step-through
   (lambda (program M-State)
-   (step-through-cps program M-State (lambda(v) v))))
+   (FormatReturn (call/cc (lambda (return) (step-through-cc program M-State return (lambda(v) v)))))))
 
 ;step-through-cps is the same as step-through but in cps style
-(define step-through-cps
-  (lambda (program M-State return)
+(define step-through-cc
+  (lambda (program M-State return break)
    (cond
      ; need to check this first to prevent errors with checking the cdr or car of an empty list, if program ends unexpectedly, will print M-State
-     [(or (null? program) (IsDone? M-State)) (return M-State)];if program returned this ends the program and returns the return value
-     [(IsVarDecStatement (GetFirstStatement program)) (step-through-cps (cdr program) (HandleVarDec M-State (GetFirstStatement program)) return)]
-     [(IsAssignStatement (GetFirstStatement program)) (step-through-cps (cdr program) (HandleAssign M-State (GetFirstStatement program)) return)]
-     [(IsIfStatement (GetFirstStatement program)) (step-through-cps (cdr program) (HandleIf M-State (GetFirstStatement program)) return)]
-     [(IsWhileStatement (GetFirstStatement program)) (step-through-cps (cdr program) (HandleWhile M-State (GetFirstStatement program)) return)]
-     [(IsCodeBlockStatement (GetFirstStatement program)) (step-through-cps (cdr program) (HandleCodeBlock M-State (GetFirstStatement program)) return) ]
-     [(IsReturnStatement (GetFirstStatement program)) (HandleReturn M-State (GetFirstStatement program))]; just returns M-State with only return value
-     [else (return M-State)])));if the program ends without a return statement, just print M-State so you can see all the variables
+     ;[(or (null? program) (IsDone? M-State)) (return M-State)];if program returned this ends the program and returns the return value
+     [(null? program) M-State]
+     [(IsVarDecStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleVarDec M-State (GetFirstStatement program)) return break)]
+     [(IsAssignStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleAssign M-State (GetFirstStatement program)) return break)]
+     [(IsIfStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleIf M-State (GetFirstStatement program) return break) return break)]
+     [(IsWhileStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (call/cc (lambda(break)(HandleWhile M-State (GetFirstStatement program) return break #f))) return break)]
+     [(IsCodeBlockStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleCodeBlock M-State (GetFirstStatement program) return break) return break)]
+     ;breaks out of a loop or does nothing if there is no loop 
+     [(IsBreakStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (break M-State) return break)]
+     [(IsReturnStatement? (GetFirstStatement program)) (HandleReturn M-State (GetFirstStatement program) return)]; just returns M-State with only return value
+     [else M-State])));if the program ends without a return statement, just print M-State so you can see all the variables
+
+(define sum-with-cut
+  (lambda (lis)
+    (sumwithcut lis (lambda (v) v))))
+
+(define sumwithcut
+  (lambda (lis cut)
+    (cond
+      ((null? lis) 0)
+      ((eq? 'cut (car lis)) (call/cc (lambda (k) (sumwithcut (cdr lis) k))))   ; <-  we want to "mark"
+      ((eq? 'end (car lis))  (cut (sumwithcut (cdr lis) (lambda (v) v))))   ; <-  we want to jump to the cut "mark", call cut with the correct value
+      ((eq? 'allow (car lis))  (sumwithcut (cdr lis) (lambda (v) (cut (+ (cadr lis) v)))))  ; <- change the cut to add in one more value
+      (else (+ (car lis) (sumwithcut (cdr lis) cut))))))
 
 ;Main Interpreter function
 
@@ -659,8 +668,7 @@
 
 (define interpret
   (lambda (filename)
-     (ReturnProgram (step-through (parser filename) '()))))
-
+     (step-through (parser filename) '())))
 
 (interpret "t.txt")
 
