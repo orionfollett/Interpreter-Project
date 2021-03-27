@@ -467,13 +467,13 @@
 
 ;HandleIf -> Takes in M-State and an if statement, returns updated M-State
 (define HandleIf
-  (lambda (M-State statement return break continue)
+  (lambda (M-State statement return break continue throw)
     (cond
     [(null? statement) M-State];none of the if statements were true
-    [(M-Value M-State (I_GetIfCondition statement)) (step-through-cc (I_GetIfBody statement) M-State return break continue)] ;if statement was true, so run the body
+    [(M-Value M-State (I_GetIfCondition statement)) (step-through-cc (I_GetIfBody statement) M-State return break continue throw)] ;if statement was true, so run the body
     [(and (not (null? (I_GetNext statement))) (I_IsIf? (I_GetNext statement))) (HandleIf M-State (I_GetNext statement))] ;if statement was false, but there are more ifs to check check the next one
     [(null? (I_GetNext statement)) M-State];nothing left to check, return the state
-    [else (step-through-cc (I_GetNext statement) M-State return break continue)];there is an else statement remaining, run that code, then return the updated M-State
+    [else (step-through-cc (I_GetNext statement) M-State return break continue throw)];there is an else statement remaining, run that code, then return the updated M-State
     )))
 
 
@@ -500,17 +500,16 @@
 
 ;main while loop function
 (define loop
-  (lambda(M-State statement return break continue)
+  (lambda(M-State statement return break continue throw)
    (cond
     [(W_CheckWhileCondition M-State statement) 
-                          (call/cc (lambda (continue) (loop (step-through-cc (W_GetWhileBody statement) M-State return break continue) statement return break continue)))]
+                          (loop (call/cc (lambda (continue) (step-through-cc (W_GetWhileBody statement) M-State return break continue throw))) statement return break continue throw)]
     [else M-State])));loop condition is no longer true, loop is done
 
 ;HandleWhile -> Takes in M-State and a while statement and a break continuation, returns updated M-State
 (define HandleWhile
- (lambda (M-State statement return break continue)
-   (loop M-State statement return break continue)
-   ))
+ (lambda (M-State statement return break continue throw)
+   (loop M-State statement return break continue throw)))
 
 
 ;******************************Handle Return Statement********************************************
@@ -547,8 +546,8 @@
 
 ;takes a code block beginning with begin statement, returns M-State after resolving that code block
 (define HandleCodeBlock
-  (lambda(M-State statement return break continue)
-     (CB_RemoveLayer (step-through-cc (CB_GetBody statement) (CB_AddLayer M-State) return break continue))))
+  (lambda(M-State statement return break continue throw)
+     (CB_RemoveLayer (step-through-cc (CB_GetBody statement) (CB_AddLayer M-State) return break continue throw))))
 
 ;**************************************Throw**************************************
 (define T_GetBody
@@ -559,6 +558,38 @@
 (define HandleThrow
   (lambda(statement)
     (error "ERROR: " (T_GetBody statement))))
+
+
+;**************************************Throw**************************************
+
+(define TC_GetTryBody
+  (lambda(statement)
+    (car (cdr statement))))
+
+(define TC_GetCatchBody
+  (lambda(statement)
+    (car (cdr (cdr (car (cdr (cdr statement))))))))
+
+(define TC_GetFinallyBody
+  (lambda(statement)
+    (car (cdr (car (cdr (cdr (cdr statement))))))))
+
+(define TC_GetLabel
+  (lambda(statement)
+    (car statement)))
+
+(define TC_HandleTry
+  (lambda(M-State body return break continue throw)
+    (step-through-cc body M-State return break continue throw)))
+
+(define TC_HandleCatch
+  (lambda(M-State body return break continue throw)
+    (step-through-cc body M-State return break continue throw)))
+
+(define HandleTryCatch
+  (lambda(M-State statement return break continue throw)
+    (TC_HandleTry M-State (TC_GetTryBody statement) return break continue throw)))
+
 
 ;**************************parse tree step through helper functions: ***********************************
 
@@ -633,12 +664,20 @@
       [(eq? (car statement) 'continue) #t]
       [else #f])))
 
-;IsContinueStatement? takes in a single statement, returns true if it is a continue statement
+;IsThrowStatement? takes in a single statement, returns true if it is a throw statement
 (define IsThrowStatement?
   (lambda (statement)
     (cond
       [(null? statement) #f]
       [(eq? (car statement) 'throw) #t]
+      [else #f])))
+
+;IsTryCatchStatement? takes in a single statement, returns true if it is a try catch statement
+(define IsTryCatchStatement?
+  (lambda (statement)
+    (cond
+      [(null? statement) #f]
+      [(eq? (car statement) 'try) #t]
       [else #f])))
 
 ;ReturnProgram - takes in the result of the program, decides what to output at the end
@@ -649,29 +688,43 @@
       [(eq? #f returnVal) 'false]
       [else returnVal])))
 
+;************************************Default Continutations*******************************
+
+(define STD_BREAK
+  (lambda(v) (error "Break outside of loop")))
+
+(define STD_CONT
+  (lambda(v) (error "Continue outside of loop")))
+
+(define STD_THROW
+  (lambda(v) (error "Error: " v)))
+
+;****************************************************************************************
+
 ;step-through takes program: the parsed program, M-state: a list of bindings
 ;it is used to step through each line of the program, it returns the return value if the program returned, or M-State if it didn't
 (define step-through
   (lambda (program M-State)
-   (FormatReturn (call/cc (lambda (return) (step-through-cc program M-State return (lambda(v) (error "Break outside of loop")) (lambda(v) (error "Continue outside of loop"))))))))
+   (FormatReturn (call/cc (lambda (return) (step-through-cc program M-State return STD_BREAK STD_CONT STD_THROW))))))
 
 ;step-through-cps is the same as step-through but in cps style
 (define step-through-cc
-  (lambda (program M-State return break continue)
+  (lambda (program M-State return break continue throw)
    (cond
      ; need to check this first to prevent errors with checking the cdr or car of an empty list, if program ends unexpectedly, will print M-State
      [(null? program) M-State]
-     [(IsVarDecStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleVarDec M-State (GetFirstStatement program)) return break continue)]
-     [(IsAssignStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleAssign M-State (GetFirstStatement program)) return break continue)]
-     [(IsIfStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleIf M-State (GetFirstStatement program) return break continue) return break continue)]
+     [(IsVarDecStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleVarDec M-State (GetFirstStatement program)) return break continue throw)]
+     [(IsAssignStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleAssign M-State (GetFirstStatement program)) return break continue throw)]
+     [(IsIfStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleIf M-State (GetFirstStatement program) return break continue throw) return break continue throw)]
      [(IsWhileStatement? (GetFirstStatement program))
       (step-through-cc (cdr program) (call/cc (lambda(break)
-                                      (HandleWhile M-State (GetFirstStatement program) return break continue))) return break continue)]
-     [(IsCodeBlockStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleCodeBlock M-State (GetFirstStatement program) return break continue) return break continue)]
-     [(IsBreakStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (break M-State) return (lambda(v) (error "Break outside of loop")) continue)] ;breaks out of a loop or does nothing if there was no loop
-     [(IsContinueStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (continue M-State) return break (lambda(v) (error "Continue outside of loop")))] ;goes back to beginning of loop or does nothing if no loop
+                                      (HandleWhile M-State (GetFirstStatement program) return break continue throw))) return break continue throw)]
+     [(IsTryCatchStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleTryCatch M-State (GetFirstStatement program) return break continue throw) return break continue throw)]
+     [(IsCodeBlockStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleCodeBlock M-State (GetFirstStatement program) return break continue throw) return break continue throw)]
+     [(IsBreakStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (break M-State) return STD_BREAK continue throw)] ;breaks out of a loop or does nothing if there was no loop
+     [(IsContinueStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (continue M-State) return break STD_CONT throw)] ;goes back to beginning of loop or does nothing if no loop
      [(IsReturnStatement? (GetFirstStatement program)) (HandleReturn M-State (GetFirstStatement program) return)]; just returns M-State with only return value
-     [(IsThrowStatement? (GetFirstStatement program)) (HandleThrow (GetFirstStatement program))] 
+     [(IsThrowStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (throw M-State) return break continue STD_THROW)] 
      [else M-State])));if the program ends without a return statement, just print M-State so you can see all the variables
 
 ;Main Interpreter function
@@ -687,48 +740,48 @@
 
 ;Test Cases:
 ;
-;(eq? (interpret "t1.txt") 150)
-;(eq? (interpret "t2.txt") -4)
-;(eq? (interpret "t3.txt") 10)
-;(eq? (interpret "t4.txt") 16)
-;(eq? (interpret "t5.txt") 220)
-;(eq? (interpret "t6.txt") 5)
-;(eq? (interpret "t7.txt") 6)
-;(eq? (interpret "t8.txt") 10)
-;(eq? (interpret "t9.txt") 5)
-;(eq? (interpret "t10.txt") -39)
+(list '1 (eq? (interpret "t1.txt") 150))
+(list '2 (eq? (interpret "t2.txt") -4))
+(list '3 (eq? (interpret "t3.txt") 10))
+(list '4 (eq? (interpret "t4.txt") 16))
+(list '5 (eq? (interpret "t5.txt") 220))
+(list '6 (eq? (interpret "t6.txt") 5))
+(list '7 (eq? (interpret "t7.txt") 6))
+(list '8 (eq? (interpret "t8.txt") 10))
+(list '9 (eq? (interpret "t9.txt") 5))
+(list '10 (eq? (interpret "t10.txt") -39))
 ;(eq? (interpret "t12.txt") ); should give error
 ;(eq? (interpret "t13.txt") ) ;should give error
 ;(eq? (interpret "t14.txt") ) ;should give error
 ;(eq? (interpret "t15.txt") ) ;should give error
-;(eq? (interpret "t16.txt") 100)
-;(eq? (interpret "t17.txt") 'false)
-;(eq? (interpret "t18.txt") 'true)
-;(eq? (interpret "t19.txt") 128)
-;(eq? (interpret "t20.txt") 12)
-;(eq? (interpret "t21.txt") 20)
-;(eq? (interpret "t22.txt") 164)
-;(eq? (interpret "t23.txt") 32)
-;(eq? (interpret "t24.txt") 2)
+(list '12 (eq? (interpret "t16.txt") 100))
+(list '13 (eq? (interpret "t17.txt") 'false))
+(list '14 (eq? (interpret "t18.txt") 'true))
+(list '15 (eq? (interpret "t19.txt") 128))
+(list '16 (eq? (interpret "t20.txt") 12))
+(list '17 (eq? (interpret "t21.txt") 20))
+(list '18 (eq? (interpret "t22.txt") 164))
+(list '19 (eq? (interpret "t23.txt") 32))
+(list '20 (eq? (interpret "t24.txt") 2))
 ;(eq? (interpret "t25.txt") ) ;should give error --> not working, returning 4
-;(eq? (interpret "t26.txt") 25)
-;(eq? (interpret "t27.txt") 21)
-;(eq? (interpret "t28.txt") 6)
-;(eq? (interpret "t29.txt") -1)
-;(eq? (interpret "t30.txt") 789)
+(list '21 (eq? (interpret "t26.txt") 25))
+(list '22 (eq? (interpret "t27.txt") 21))
+(list '23 (eq? (interpret "t28.txt") 6))
+(list '24 (eq? (interpret "t29.txt") -1))
+(list '25 (eq? (interpret "t30.txt") 789))
 ;(eq? (interpret "t31.txt") ) ; should return error --> not working, returns -1
 ;(eq? (interpret "t32.txt") ) ; should return error
 ;(eq? (interpret "t33.txt") ) ; should return error --> not working, returns value
-;(eq? (interpret "t34.txt") 12 ) ;
-;(eq? (interpret "t35.txt") 125) ; not implemented yet
-;(eq? (interpret "t36.txt") 110) ; not implemented yet
-;(eq? (interpret "t37.txt") 20040) ; not implemented yet
-;(eq? (interpret "t38.txt") 101) ; not implemented yet
+(list '26 (eq? (interpret "t34.txt") 12 )) ;
+(list '27 (eq? (interpret "t35.txt") 125)) ; not implemented yet
+;(list '28 (eq? (interpret "t36.txt") 110)) ; not implemented yet
+;(list '29 (eq? (interpret "t37.txt") 20040)) ; not implemented yet
+;(list '30 (eq? (interpret "t38.txt") 101)) ; not implemented yet
 ;(eq? (interpret "t39.txt")) ; should return error --> not implemented yet
 
 ;tests prithik wrote
-;(eq? (interpret "t40.txt") 9) ; not working correctly
-;(eq? (interpret "t41.txt") 5) ;
+(list '31 (eq? (interpret "t40.txt") 9)) ; not working correctly
+(list '32 (eq? (interpret "t41.txt") 5)) ;
 
 ;(interpret "t41.txt")
 
