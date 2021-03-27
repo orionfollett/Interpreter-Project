@@ -712,5 +712,10 @@
 ;(eq? (interpret "t37.txt") 20040) ; not implemented yet
 ;(eq? (interpret "t38.txt") 101) ; not implemented yet
 ;(eq? (interpret "t39.txt")) ; should return error --> not implemented yet
-(interpret "t39.txt")
+
+;tests prithik wrote
+;(eq? (interpret "t40.txt") 9) ; not working correctly
+;(eq? (interpret "t41.txt") 5) ;
+
+(interpret "t41.txt")
 
