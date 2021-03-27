@@ -670,33 +670,47 @@
   (lambda (filename)
      (step-through (parser filename) '())))
 
-(interpret "t.txt")
+;(interpret "t.txt")
 
 ;Test Cases:
 ;
-(eq? (interpret "t1.txt") 150)
-(eq? (interpret "t2.txt") -4)
-(eq? (interpret "t3.txt") 10)
-(eq? (interpret "t4.txt") 16)
-(eq? (interpret "t5.txt") 220)
-(eq? (interpret "t6.txt") 5)
-(eq? (interpret "t7.txt") 6)
-(eq? (interpret "t8.txt") 10)
-(eq? (interpret "t9.txt") 5)
-(eq? (interpret "t10.txt") -39)
+;(eq? (interpret "t1.txt") 150)
+;(eq? (interpret "t2.txt") -4)
+;(eq? (interpret "t3.txt") 10)
+;(eq? (interpret "t4.txt") 16)
+;(eq? (interpret "t5.txt") 220)
+;(eq? (interpret "t6.txt") 5)
+;(eq? (interpret "t7.txt") 6)
+;(eq? (interpret "t8.txt") 10)
+;(eq? (interpret "t9.txt") 5)
+;(eq? (interpret "t10.txt") -39)
 ;(eq? (interpret "t12.txt") ); should give error
 ;(eq? (interpret "t13.txt") ) ;should give error
 ;(eq? (interpret "t14.txt") ) ;should give error
 ;(eq? (interpret "t15.txt") ) ;should give error
-(eq? (interpret "t16.txt") 100)
-(eq? (interpret "t17.txt") 'false)
-(eq? (interpret "t18.txt") 'true)
-(eq? (interpret "t19.txt") 128)
-(eq? (interpret "t20.txt") 12)
-(eq? (interpret "t21.txt") 20)
-(eq? (interpret "t22.txt") 164)
-(eq? (interpret "t23.txt") 32)
-(eq? (interpret "t24.txt") 2)
+;(eq? (interpret "t16.txt") 100)
+;(eq? (interpret "t17.txt") 'false)
+;(eq? (interpret "t18.txt") 'true)
+;(eq? (interpret "t19.txt") 128)
+;(eq? (interpret "t20.txt") 12)
+;(eq? (interpret "t21.txt") 20)
+;(eq? (interpret "t22.txt") 164)
+;(eq? (interpret "t23.txt") 32)
+;(eq? (interpret "t24.txt") 2)
+;(eq? (interpret "t25.txt") ) ;should give error --> not working, returning 4
+;(eq? (interpret "t26.txt") 25)
+;(eq? (interpret "t27.txt") 21)
+;(eq? (interpret "t28.txt") 6)
+;(eq? (interpret "t29.txt") -1)
+;(eq? (interpret "t30.txt") 789)
+;(eq? (interpret "t31.txt") ) ; should return error --> not working, returns -1
+;(eq? (interpret "t32.txt") ) ; should return error
+;(eq? (interpret "t33.txt") ) ; should return error --> not working, returns value
+;(eq? (interpret "t34.txt") 12 ) ;
+;(eq? (interpret "t35.txt") 125) ; not implemented yet
+;(eq? (interpret "t36.txt") 110) ; not implemented yet
+;(eq? (interpret "t37.txt") 20040) ; not implemented yet
+;(eq? (interpret "t38.txt") 101) ; not implemented yet
+;(eq? (interpret "t39.txt")) ; should return error --> not implemented yet
+(interpret "t39.txt")
 
-
-;(interpret "t.txt")
