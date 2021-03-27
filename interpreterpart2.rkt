@@ -467,13 +467,13 @@
 
 ;HandleIf -> Takes in M-State and an if statement, returns updated M-State
 (define HandleIf
-  (lambda (M-State statement return break)
+  (lambda (M-State statement return break continue)
     (cond
     [(null? statement) M-State];none of the if statements were true
-    [(M-Value M-State (I_GetIfCondition statement)) (step-through-cc (I_GetIfBody statement) M-State return break)] ;if statement was true, so run the body
+    [(M-Value M-State (I_GetIfCondition statement)) (step-through-cc (I_GetIfBody statement) M-State return break continue)] ;if statement was true, so run the body
     [(and (not (null? (I_GetNext statement))) (I_IsIf? (I_GetNext statement))) (HandleIf M-State (I_GetNext statement))] ;if statement was false, but there are more ifs to check check the next one
     [(null? (I_GetNext statement)) M-State];nothing left to check, return the state
-    [else (step-through-cc (I_GetNext statement) M-State return break)];there is an else statement remaining, run that code, then return the updated M-State
+    [else (step-through-cc (I_GetNext statement) M-State return break continue)];there is an else statement remaining, run that code, then return the updated M-State
     )))
 
 
@@ -504,15 +504,16 @@
     (not (IsVarUndeclared? M-State 'return))))
 
 (define loop
-  (lambda(M-State statement return break next)
+  (lambda(M-State statement return break continue next)
    (cond
-    [(W_CheckWhileCondition M-State statement) (loop (step-through-cc (W_GetWhileBody statement) M-State return break) statement return break next)]
+    [(W_CheckWhileCondition M-State statement) 
+                          (call/cc (lambda (continue) (loop (step-through-cc (W_GetWhileBody statement) M-State return break continue) statement return break continue next)))]
     [else M-State])));loop condition is no longer true, loop is done
 
 ;HandleWhile -> Takes in M-State and a while statement and a break continuation, returns updated M-State
 (define HandleWhile
- (lambda (M-State statement return break next)
-   (loop M-State statement return break next)
+ (lambda (M-State statement return break continue next)
+   (loop M-State statement return break continue next)
    ))
 
 
@@ -529,6 +530,7 @@
   (lambda (M-State statement return)
     ;(list (list 'return (M-Value M-State (R_GetReturn statement))))))
     (return (M-Value M-State (R_GetReturn statement)))))
+
 
 ;****************************************Handle Code Block**********************************************
 
@@ -549,8 +551,9 @@
 
 ;takes a code block beginning with begin statement, returns M-State after resolving that code block
 (define HandleCodeBlock
-  (lambda(M-State statement return break)
-     (CB_RemoveLayer (step-through-cc (CB_GetBody statement) (CB_AddLayer M-State) return break))))
+  (lambda(M-State statement return break continue)
+     (CB_RemoveLayer (step-through-cc (CB_GetBody statement) (CB_AddLayer M-State) return break continue))))
+
 
 ;**************************parse tree step through helper functions: ***********************************
 
@@ -617,6 +620,14 @@
       [(eq? (car statement) 'break) #t]
       [else #f])))
 
+;IsContinueStatement? takes in a single statement, returns true if it is a continue statement
+(define IsContinueStatement?
+  (lambda (statement)
+    (cond
+      [(null? statement) #f]
+      [(eq? (car statement) 'continue) #t]
+      [else #f])))
+
 ;ReturnProgram - takes in the result of the program, decides what to output at the end
 (define FormatReturn
    (lambda (returnVal)
@@ -629,37 +640,26 @@
 ;it is used to step through each line of the program, it returns the return value if the program returned, or M-State if it didn't
 (define step-through
   (lambda (program M-State)
-   (FormatReturn (call/cc (lambda (return) (step-through-cc program M-State return (lambda(v) v)))))))
+   (FormatReturn (call/cc (lambda (return) (step-through-cc program M-State return (lambda(v) v) (lambda(v) v)))))))
 
 ;step-through-cps is the same as step-through but in cps style
 (define step-through-cc
-  (lambda (program M-State return break)
+  (lambda (program M-State return break continue)
    (cond
      ; need to check this first to prevent errors with checking the cdr or car of an empty list, if program ends unexpectedly, will print M-State
      ;[(or (null? program) (IsDone? M-State)) (return M-State)];if program returned this ends the program and returns the return value
      [(null? program) M-State]
-     [(IsVarDecStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleVarDec M-State (GetFirstStatement program)) return break)]
-     [(IsAssignStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleAssign M-State (GetFirstStatement program)) return break)]
-     [(IsIfStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleIf M-State (GetFirstStatement program) return break) return break)]
-     [(IsWhileStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (call/cc (lambda(break)(HandleWhile M-State (GetFirstStatement program) return break #f))) return break)]
-     [(IsCodeBlockStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleCodeBlock M-State (GetFirstStatement program) return break) return break)]
-     ;breaks out of a loop or does nothing if there is no loop 
-     [(IsBreakStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (break M-State) return break)]
+     [(IsVarDecStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleVarDec M-State (GetFirstStatement program)) return break continue)]
+     [(IsAssignStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleAssign M-State (GetFirstStatement program)) return break continue)]
+     [(IsIfStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleIf M-State (GetFirstStatement program) return break continue) return break continue)]
+     [(IsWhileStatement? (GetFirstStatement program))
+      (step-through-cc (cdr program) (call/cc (lambda(break)
+                                      (HandleWhile M-State (GetFirstStatement program) return break continue #f))) return break continue)]
+     [(IsCodeBlockStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleCodeBlock M-State (GetFirstStatement program) return break continue) return break continue)]
+     [(IsBreakStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (break M-State) return (lambda(v) v) continue)] ;breaks out of a loop or does nothing if there was no loop
+     [(IsContinueStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (continue M-State) return break (lambda(v) v))] ;goes back to beginning of loop or does nothing if no loop
      [(IsReturnStatement? (GetFirstStatement program)) (HandleReturn M-State (GetFirstStatement program) return)]; just returns M-State with only return value
      [else M-State])));if the program ends without a return statement, just print M-State so you can see all the variables
-
-(define sum-with-cut
-  (lambda (lis)
-    (sumwithcut lis (lambda (v) v))))
-
-(define sumwithcut
-  (lambda (lis cut)
-    (cond
-      ((null? lis) 0)
-      ((eq? 'cut (car lis)) (call/cc (lambda (k) (sumwithcut (cdr lis) k))))   ; <-  we want to "mark"
-      ((eq? 'end (car lis))  (cut (sumwithcut (cdr lis) (lambda (v) v))))   ; <-  we want to jump to the cut "mark", call cut with the correct value
-      ((eq? 'allow (car lis))  (sumwithcut (cdr lis) (lambda (v) (cut (+ (cadr lis) v)))))  ; <- change the cut to add in one more value
-      (else (+ (car lis) (sumwithcut (cdr lis) cut))))))
 
 ;Main Interpreter function
 
