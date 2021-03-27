@@ -1,15 +1,5 @@
 var x = 0;
-var y = 0;
-while(x < 10)
-{
-	x = x + 1;
-	if(y >= 5){
-		continue;
-	}
-	else{
-	break;
-}
-	y = y + 1;	
-}
 
-return y;
+if(x == 0){
+	throw e;
+}

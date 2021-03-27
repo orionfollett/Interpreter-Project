@@ -550,6 +550,15 @@
   (lambda(M-State statement return break continue)
      (CB_RemoveLayer (step-through-cc (CB_GetBody statement) (CB_AddLayer M-State) return break continue))))
 
+;**************************************Throw**************************************
+(define T_GetBody
+  (lambda(statement)
+    (car (cdr statement))
+    ))
+
+(define HandleThrow
+  (lambda(statement)
+    (error "ERROR: " (T_GetBody statement))))
 
 ;**************************parse tree step through helper functions: ***********************************
 
@@ -624,6 +633,14 @@
       [(eq? (car statement) 'continue) #t]
       [else #f])))
 
+;IsContinueStatement? takes in a single statement, returns true if it is a continue statement
+(define IsThrowStatement?
+  (lambda (statement)
+    (cond
+      [(null? statement) #f]
+      [(eq? (car statement) 'throw) #t]
+      [else #f])))
+
 ;ReturnProgram - takes in the result of the program, decides what to output at the end
 (define FormatReturn
    (lambda (returnVal)
@@ -654,6 +671,7 @@
      [(IsBreakStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (break M-State) return (lambda(v) (error "Break outside of loop")) continue)] ;breaks out of a loop or does nothing if there was no loop
      [(IsContinueStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (continue M-State) return break (lambda(v) (error "Continue outside of loop")))] ;goes back to beginning of loop or does nothing if no loop
      [(IsReturnStatement? (GetFirstStatement program)) (HandleReturn M-State (GetFirstStatement program) return)]; just returns M-State with only return value
+     [(IsThrowStatement? (GetFirstStatement program)) (HandleThrow (GetFirstStatement program))] 
      [else M-State])));if the program ends without a return statement, just print M-State so you can see all the variables
 
 ;Main Interpreter function
