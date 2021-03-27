@@ -498,16 +498,12 @@
     (list (car (cdr (cdr statement))))
     ))
 
-;IsDone -> takes in M-State, returns true if M-State has a return variable
-(define IsDone
-  (lambda (M-State)
-    (not (IsVarUndeclared? M-State 'return))))
-
+;main while loop function
 (define loop
   (lambda(M-State statement return break continue)
    (cond
     [(W_CheckWhileCondition M-State statement) 
-                          (loop (step-through-cc (W_GetWhileBody statement) (call/cc (lambda (continue) M-State)) return break continue) statement return break continue)]
+                          (call/cc (lambda (continue) (loop (step-through-cc (W_GetWhileBody statement) M-State return break continue) statement return break continue)))]
     [else M-State])));loop condition is no longer true, loop is done
 
 ;HandleWhile -> Takes in M-State and a while statement and a break continuation, returns updated M-State
@@ -640,14 +636,13 @@
 ;it is used to step through each line of the program, it returns the return value if the program returned, or M-State if it didn't
 (define step-through
   (lambda (program M-State)
-   (FormatReturn (call/cc (lambda (return) (step-through-cc program M-State return (lambda(v) (error "Break outside of loop")) (lambda(v) v)))))))
+   (FormatReturn (call/cc (lambda (return) (step-through-cc program M-State return (lambda(v) (error "Break outside of loop")) (lambda(v) (error "Continue outside of loop"))))))))
 
 ;step-through-cps is the same as step-through but in cps style
 (define step-through-cc
   (lambda (program M-State return break continue)
    (cond
      ; need to check this first to prevent errors with checking the cdr or car of an empty list, if program ends unexpectedly, will print M-State
-     ;[(or (null? program) (IsDone? M-State)) (return M-State)];if program returned this ends the program and returns the return value
      [(null? program) M-State]
      [(IsVarDecStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleVarDec M-State (GetFirstStatement program)) return break continue)]
      [(IsAssignStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleAssign M-State (GetFirstStatement program)) return break continue)]
@@ -656,8 +651,8 @@
       (step-through-cc (cdr program) (call/cc (lambda(break)
                                       (HandleWhile M-State (GetFirstStatement program) return break continue))) return break continue)]
      [(IsCodeBlockStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleCodeBlock M-State (GetFirstStatement program) return break continue) return break continue)]
-     [(IsBreakStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (break M-State) return (lambda(v) (error v "Break outside of loop")) continue)] ;breaks out of a loop or does nothing if there was no loop
-     [(IsContinueStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (continue M-State) return break (lambda(v) (error v "Continue outside of loop")))] ;goes back to beginning of loop or does nothing if no loop
+     [(IsBreakStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (break M-State) return (lambda(v) (error "Break outside of loop")) continue)] ;breaks out of a loop or does nothing if there was no loop
+     [(IsContinueStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (continue M-State) return break (lambda(v) (error "Continue outside of loop")))] ;goes back to beginning of loop or does nothing if no loop
      [(IsReturnStatement? (GetFirstStatement program)) (HandleReturn M-State (GetFirstStatement program) return)]; just returns M-State with only return value
      [else M-State])));if the program ends without a return statement, just print M-State so you can see all the variables
 
