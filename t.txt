@@ -1,16 +1,10 @@
-var x = 0;
+var x = 1;
 
-
-while(x < 10)
 {
-	if(x == 5)
-	{
-		break;
-	}	
-	x = x + 1;
+	var y = 2;
+	y = x + y;
 }
-break;
-return x;
 
+return y;
 
 

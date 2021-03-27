@@ -365,9 +365,9 @@
   (lambda (M-State varName varVal)
     (cond
      [(null? M-State) '()]
-     [(IsNewLayer? M-State) (cons (ChangeBinding (GetFirstLayer M-State) varName varVal) (ChangeBinding (RemoveLayer M-State) varName varVal))]
+     [(IsNewLayer? M-State) (cons (ChangeBinding-Exists (GetFirstLayer M-State) varName varVal) (ChangeBinding-Exists (RemoveLayer M-State) varName varVal))]
      [(eq? (GetFirstBindingName M-State) varName) (ChangeFirstBindingValue M-State varVal)]
-     [else (cons (GetFirstBinding M-State) (ChangeBinding (cdr M-State) varName varVal))])))
+     [else (cons (GetFirstBinding M-State) (ChangeBinding-Exists (cdr M-State) varName varVal))])))
 
 ;[else (AddNewBinding (RemoveBinding M-State varName) varName varVal)])))
 
@@ -504,16 +504,16 @@
     (not (IsVarUndeclared? M-State 'return))))
 
 (define loop
-  (lambda(M-State statement return break continue next)
+  (lambda(M-State statement return break continue)
    (cond
     [(W_CheckWhileCondition M-State statement) 
-                          (call/cc (lambda (continue) (loop (step-through-cc (W_GetWhileBody statement) M-State return break continue) statement return break continue next)))]
+                          (loop (step-through-cc (W_GetWhileBody statement) (call/cc (lambda (continue) M-State)) return break continue) statement return break continue)]
     [else M-State])));loop condition is no longer true, loop is done
 
 ;HandleWhile -> Takes in M-State and a while statement and a break continuation, returns updated M-State
 (define HandleWhile
- (lambda (M-State statement return break continue next)
-   (loop M-State statement return break continue next)
+ (lambda (M-State statement return break continue)
+   (loop M-State statement return break continue)
    ))
 
 
@@ -654,10 +654,10 @@
      [(IsIfStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleIf M-State (GetFirstStatement program) return break continue) return break continue)]
      [(IsWhileStatement? (GetFirstStatement program))
       (step-through-cc (cdr program) (call/cc (lambda(break)
-                                      (HandleWhile M-State (GetFirstStatement program) return break continue #f))) return break continue)]
+                                      (HandleWhile M-State (GetFirstStatement program) return break continue))) return break continue)]
      [(IsCodeBlockStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleCodeBlock M-State (GetFirstStatement program) return break continue) return break continue)]
      [(IsBreakStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (break M-State) return (lambda(v) (error v "Break outside of loop")) continue)] ;breaks out of a loop or does nothing if there was no loop
-     [(IsContinueStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (continue M-State) return break (lambda(v) v))] ;goes back to beginning of loop or does nothing if no loop
+     [(IsContinueStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (continue M-State) return break (lambda(v) (error v "Continue outside of loop")))] ;goes back to beginning of loop or does nothing if no loop
      [(IsReturnStatement? (GetFirstStatement program)) (HandleReturn M-State (GetFirstStatement program) return)]; just returns M-State with only return value
      [else M-State])));if the program ends without a return statement, just print M-State so you can see all the variables
 
