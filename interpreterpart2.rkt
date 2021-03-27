@@ -640,7 +640,7 @@
 ;it is used to step through each line of the program, it returns the return value if the program returned, or M-State if it didn't
 (define step-through
   (lambda (program M-State)
-   (FormatReturn (call/cc (lambda (return) (step-through-cc program M-State return (lambda(v) v) (lambda(v) v)))))))
+   (FormatReturn (call/cc (lambda (return) (step-through-cc program M-State return (lambda(v) (error "Break outside of loop")) (lambda(v) v)))))))
 
 ;step-through-cps is the same as step-through but in cps style
 (define step-through-cc
@@ -656,7 +656,7 @@
       (step-through-cc (cdr program) (call/cc (lambda(break)
                                       (HandleWhile M-State (GetFirstStatement program) return break continue #f))) return break continue)]
      [(IsCodeBlockStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleCodeBlock M-State (GetFirstStatement program) return break continue) return break continue)]
-     [(IsBreakStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (break M-State) return (lambda(v) v) continue)] ;breaks out of a loop or does nothing if there was no loop
+     [(IsBreakStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (break M-State) return (lambda(v) (error v "Break outside of loop")) continue)] ;breaks out of a loop or does nothing if there was no loop
      [(IsContinueStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (continue M-State) return break (lambda(v) v))] ;goes back to beginning of loop or does nothing if no loop
      [(IsReturnStatement? (GetFirstStatement program)) (HandleReturn M-State (GetFirstStatement program) return)]; just returns M-State with only return value
      [else M-State])));if the program ends without a return statement, just print M-State so you can see all the variables
@@ -670,7 +670,7 @@
   (lambda (filename)
      (step-through (parser filename) '())))
 
-;(interpret "t.txt")
+(interpret "t.txt")
 
 ;Test Cases:
 ;
@@ -717,5 +717,5 @@
 ;(eq? (interpret "t40.txt") 9) ; not working correctly
 ;(eq? (interpret "t41.txt") 5) ;
 
-(interpret "t41.txt")
+;(interpret "t41.txt")
 
