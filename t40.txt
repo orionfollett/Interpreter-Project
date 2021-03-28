@@ -1,6 +1,6 @@
 var x = 6;
 
-while( x < 7){
+while(x < 7){
     if(x < 4){
         x = x + 1;
     }

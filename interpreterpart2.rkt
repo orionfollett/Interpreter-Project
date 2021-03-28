@@ -456,7 +456,7 @@
     (cond
       [(null? statement) '()]
       [(null? (cdr (cdr (cdr statement)))) '()]
-      [else (car (cdr (cdr (cdr statement))))]
+      [else (list (car (cdr (cdr (cdr statement)))))]
     )))
 
 ;I_IsIf? takes a statement, returns true if the beginning is a full if block
@@ -471,7 +471,7 @@
     (cond
     [(null? statement) M-State];none of the if statements were true
     [(M-Value M-State (I_GetIfCondition statement)) (step-through-cc (I_GetIfBody statement) M-State return break continue throw)] ;if statement was true, so run the body
-    [(and (not (null? (I_GetNext statement))) (I_IsIf? (I_GetNext statement))) (HandleIf M-State (I_GetNext statement))] ;if statement was false, but there are more ifs to check check the next one
+    [(and (not (null? (I_GetNext statement))) (I_IsIf? (I_GetNext statement))) (HandleIf M-State (I_GetNext statement) return break continue throw)] ;if statement was false, but there are more ifs to check check the next one
     [(null? (I_GetNext statement)) M-State];nothing left to check, return the state
     [else (step-through-cc (I_GetNext statement) M-State return break continue throw)];there is an else statement remaining, run that code, then return the updated M-State
     )))
@@ -497,13 +497,14 @@
   (lambda (statement)
     (list (car (cdr (cdr statement))))
     ))
+;(while (< x 7) (begin (if (... ... ...) (... ...) (... ...)) (if (... ... ...) (... ...))))
 
 ;main while loop function
 (define loop
   (lambda(M-State statement return break continue throw)
    (cond
     [(W_CheckWhileCondition M-State statement) 
-                          (loop (call/cc (lambda (continue) (step-through-cc (W_GetWhileBody statement) M-State return break continue throw))) statement return break continue throw)]
+                          (loop (call/cc (lambda (c) (step-through-cc (W_GetWhileBody statement) M-State return break c throw))) statement return break continue throw)]
     [else M-State])));loop condition is no longer true, loop is done
 
 ;HandleWhile -> Takes in M-State and a while statement and a break continuation, returns updated M-State
@@ -721,7 +722,7 @@
                                       (HandleWhile M-State (GetFirstStatement program) return break continue throw))) return break continue throw)]
      [(IsTryCatchStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleTryCatch M-State (GetFirstStatement program) return break continue throw) return break continue throw)]
      [(IsCodeBlockStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleCodeBlock M-State (GetFirstStatement program) return break continue throw) return break continue throw)]
-     [(IsBreakStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (break M-State) return STD_BREAK continue throw)] ;breaks out of a loop or does nothing if there was no loop
+     [(IsBreakStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (break (RemoveLayer M-State)) return STD_BREAK continue throw)] ;breaks out of a loop or does nothing if there was no loop
      [(IsContinueStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (continue M-State) return break STD_CONT throw)] ;goes back to beginning of loop or does nothing if no loop
      [(IsReturnStatement? (GetFirstStatement program)) (HandleReturn M-State (GetFirstStatement program) return)]; just returns M-State with only return value
      [(IsThrowStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (throw M-State) return break continue STD_THROW)] 
@@ -736,7 +737,7 @@
   (lambda (filename)
      (step-through (parser filename) '())))
 
-(interpret "t.txt")
+;(interpret "t.txt")
 
 ;Test Cases:
 ;
@@ -763,17 +764,17 @@
 (list '18 (eq? (interpret "t22.txt") 164))
 (list '19 (eq? (interpret "t23.txt") 32))
 (list '20 (eq? (interpret "t24.txt") 2))
-;(eq? (interpret "t25.txt") ) ;should give error --> not working, returning 4
+;(eq? (interpret "t25.txt") ) ;should give error
 (list '21 (eq? (interpret "t26.txt") 25))
 (list '22 (eq? (interpret "t27.txt") 21))
 (list '23 (eq? (interpret "t28.txt") 6))
 (list '24 (eq? (interpret "t29.txt") -1))
 (list '25 (eq? (interpret "t30.txt") 789))
-;(eq? (interpret "t31.txt") ) ; should return error --> not working, returns -1
+;(eq? (interpret "t31.txt") ) ; should return error
 ;(eq? (interpret "t32.txt") ) ; should return error
-;(eq? (interpret "t33.txt") ) ; should return error --> not working, returns value
-(list '26 (eq? (interpret "t34.txt") 12 )) ;
-(list '27 (eq? (interpret "t35.txt") 125)) ; not implemented yet
+;(eq? (interpret "t33.txt") ) ; should return error
+;(list '26 (eq? (interpret "t34.txt") 12 )) ;
+;(list '27 (eq? (interpret "t35.txt") 125)) ; not implemented yet
 ;(list '28 (eq? (interpret "t36.txt") 110)) ; not implemented yet
 ;(list '29 (eq? (interpret "t37.txt") 20040)) ; not implemented yet
 ;(list '30 (eq? (interpret "t38.txt") 101)) ; not implemented yet
