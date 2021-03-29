@@ -768,46 +768,46 @@
 
 ;Test Cases:
 ;
-(list '1 (eq? (interpret "t1.txt") 150))
-(list '2 (eq? (interpret "t2.txt") -4))
-(list '3 (eq? (interpret "t3.txt") 10))
-(list '4 (eq? (interpret "t4.txt") 16))
-(list '5 (eq? (interpret "t5.txt") 220))
-(list '6 (eq? (interpret "t6.txt") 5))
-(list '7 (eq? (interpret "t7.txt") 6))
-(list '8 (eq? (interpret "t8.txt") 10))
-(list '9 (eq? (interpret "t9.txt") 5))
-(list '10 (eq? (interpret "t10.txt") -39))
+;(list '1 (eq? (interpret "t1.txt") 150))
+;(list '2 (eq? (interpret "t2.txt") -4))
+;(list '3 (eq? (interpret "t3.txt") 10))
+;(list '4 (eq? (interpret "t4.txt") 16))
+;(list '5 (eq? (interpret "t5.txt") 220))
+;(list '6 (eq? (interpret "t6.txt") 5))
+;(list '7 (eq? (interpret "t7.txt") 6))
+;(list '8 (eq? (interpret "t8.txt") 10))
+;(list '9 (eq? (interpret "t9.txt") 5))
+;(list '10 (eq? (interpret "t10.txt") -39))
 ;(eq? (interpret "t12.txt") ); should give error
 ;(eq? (interpret "t13.txt") ) ;should give error
 ;(eq? (interpret "t14.txt") ) ;should give error
 ;(eq? (interpret "t15.txt") ) ;should give error
-(list '12 (eq? (interpret "t16.txt") 100))
-(list '13 (eq? (interpret "t17.txt") 'false))
-(list '14 (eq? (interpret "t18.txt") 'true))
-(list '15 (eq? (interpret "t19.txt") 128))
-(list '16 (eq? (interpret "t20.txt") 12))
-(list '17 (eq? (interpret "t21.txt") 20))
-(list '18 (eq? (interpret "t22.txt") 164))
-(list '19 (eq? (interpret "t23.txt") 32))
-(list '20 (eq? (interpret "t24.txt") 2))
+;(list '12 (eq? (interpret "t16.txt") 100))
+;(list '13 (eq? (interpret "t17.txt") 'false))
+;(list '14 (eq? (interpret "t18.txt") 'true))
+;(list '15 (eq? (interpret "t19.txt") 128))
+;(list '16 (eq? (interpret "t20.txt") 12))
+;(list '17 (eq? (interpret "t21.txt") 20))
+;(list '18 (eq? (interpret "t22.txt") 164))
+;(list '19 (eq? (interpret "t23.txt") 32))
+;(list '20 (eq? (interpret "t24.txt") 2))
 ;(eq? (interpret "t25.txt") ) ;should give error
-(list '21 (eq? (interpret "t26.txt") 25))
-(list '22 (eq? (interpret "t27.txt") 21))
-(list '23 (eq? (interpret "t28.txt") 6))
-(list '24 (eq? (interpret "t29.txt") -1))
-(list '25 (eq? (interpret "t30.txt") 789))
+;(list '21 (eq? (interpret "t26.txt") 25))
+;(list '22 (eq? (interpret "t27.txt") 21))
+;(list '23 (eq? (interpret "t28.txt") 6))
+;(list '24 (eq? (interpret "t29.txt") -1))
+;(list '25 (eq? (interpret "t30.txt") 789))
 ;(eq? (interpret "t31.txt") ) ; should return error
 ;(eq? (interpret "t32.txt") ) ; should return error
 ;(eq? (interpret "t33.txt") ) ; should return error
 ;(list '26 (eq? (interpret "t34.txt") 12 )) ;
-(list '27 (eq? (interpret "t35.txt") 125))
-(list '28 (eq? (interpret "t36.txt") 110))
-(list '29 (eq? (interpret "t37.txt") 2000400)) ; not working
-(list '30 (eq? (interpret "t38.txt") 101))
+;(list '27 (eq? (interpret "t35.txt") 125))
+;(list '28 (eq? (interpret "t36.txt") 110))
+;(list '29 (eq? (interpret "t37.txt") 2000400)) ; not working
+;(list '30 (eq? (interpret "t38.txt") 101))
 ;(eq? (interpret "t39.txt")) ; should return error
-(list '31 (eq? (interpret "t40.txt") 9)) ; 
-(list '32 (eq? (interpret "t41.txt") 5)) ;
+;(list '31 (eq? (interpret "t40.txt") 9)) ; 
+;(list '32 (eq? (interpret "t41.txt") 5)) ;
 
 
 ;Part 2 General Idea/ List of Features
