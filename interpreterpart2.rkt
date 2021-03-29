@@ -414,6 +414,7 @@
       [else (error "Error: " (VD_GetVarName statement) "variable already declared")]
     )))
 
+
 ;****************************Assignment Statement Functions******************************************
 
 ;AS_ indicates an assignment statement helper function, these should only be used with assignment statements
@@ -557,39 +558,76 @@
     ))
 
 (define HandleThrow
+  (lambda(M-State statement throw)
+    (throw (M-Value M-State (T_GetBody statement)))))
+
+
+;**************************************TryCatch**************************************
+
+;returns #t if there is a catch body, false otherwise
+(define TC_IsCatchBody?
   (lambda(statement)
-    (error "ERROR: " (T_GetBody statement))))
+    (not (null? (car (cdr (cdr statement)))))
+    ))
 
+;returns #t if there is a finally body, false otherwise
+(define TC_IsFinallyBody?
+  (lambda(statement)
+    (not (null? (car (cdr (cdr (cdr statement))))))
+    ))
 
-;**************************************Throw**************************************
-
+;returns the  body of the try statement with the "try" keyword stripped
 (define TC_GetTryBody
   (lambda(statement)
     (car (cdr statement))))
 
+;returns the catch body with the catch keyword and variable name stripped
 (define TC_GetCatchBody
   (lambda(statement)
-    (car (cdr (cdr (car (cdr (cdr statement))))))))
+    (cond
+      [(TC_IsCatchBody? statement) (car (cdr (cdr (car (cdr (cdr statement))))))]
+      [else '()])))
 
+;returns finally body with finally word stripped
 (define TC_GetFinallyBody
   (lambda(statement)
-    (car (cdr (car (cdr (cdr (cdr statement))))))))
+    (cond
+    [(TC_IsFinallyBody? statement) (car (cdr (car (cdr (cdr (cdr statement))))))]
+    [else '()])))
 
-(define TC_GetLabel
+;get name of catch variable so it can be referenced in catch block
+(define TC_GetVarName
   (lambda(statement)
-    (car statement)))
+    (cond
+      [(TC_IsCatchBody? statement) (car (car (cdr (car (cdr (cdr statement))))))];if there is no catch body, no catch variable to add
+      [else 'null])))
 
-(define TC_HandleTry
-  (lambda(M-State body return break continue throw)
-    (step-through-cc body M-State return break continue throw)))
+;returns M-State with a binding for the catch variable
+(define TC_AddCatchValueToMState
+  (lambda(M-State varName thrown_value)
+    (cond
+      [(IsVarUndeclared? M-State varName) (AddNewBinding M-State varName thrown_value)]
+      [else (error "error name in catch already been used")])))
 
 (define TC_HandleCatch
+  (lambda(varName thrown_value M-State body return break continue throw)
+    (cond;check if thrown value is number or mstate
+      [(or (eq? varName 'null) (list? thrown_value)) thrown_value];if thown_value is a list, its  the M-state from try block, just run finally block, if its not list, something was thrown, run catch block
+      ;thrown value isa literal, run catch block
+      [else (RemoveBinding (step-through-cc body (TC_AddCatchValueToMState M-State varName thrown_value) return break continue throw) varName)])))
+     
+(define TC_HandleGeneric
   (lambda(M-State body return break continue throw)
     (step-through-cc body M-State return break continue throw)))
 
 (define HandleTryCatch
   (lambda(M-State statement return break continue throw)
-    (TC_HandleTry M-State (TC_GetTryBody statement) return break continue throw)))
+    ;run try block, return value of try block run into catch block, catch sees if it should run, then run finally block
+    (TC_HandleGeneric
+     (TC_HandleCatch (TC_GetVarName statement) (call/cc (lambda(throw)
+      (TC_HandleGeneric M-State (TC_GetTryBody statement) return break continue throw))) M-State
+       (TC_GetCatchBody statement) return break continue throw)
+        (TC_GetFinallyBody statement) return break continue throw)))
 
 
 ;**************************parse tree step through helper functions: ***********************************
@@ -725,7 +763,7 @@
      [(IsBreakStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (break (RemoveLayer M-State)) return STD_BREAK continue throw)] ;breaks out of a loop or does nothing if there was no loop
      [(IsContinueStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (continue M-State) return break STD_CONT throw)] ;goes back to beginning of loop or does nothing if no loop
      [(IsReturnStatement? (GetFirstStatement program)) (HandleReturn M-State (GetFirstStatement program) return)]; just returns M-State with only return value
-     [(IsThrowStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (throw M-State) return break continue STD_THROW)] 
+     [(IsThrowStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleThrow M-State (GetFirstStatement program) throw) return break continue STD_THROW)] 
      [else M-State])));if the program ends without a return statement, just print M-State so you can see all the variables
 
 ;Main Interpreter function
@@ -774,10 +812,10 @@
 ;(eq? (interpret "t32.txt") ) ; should return error
 ;(eq? (interpret "t33.txt") ) ; should return error
 ;(list '26 (eq? (interpret "t34.txt") 12 )) ;
-;(list '27 (eq? (interpret "t35.txt") 125)) ; not implemented yet
-;(list '28 (eq? (interpret "t36.txt") 110)) ; not implemented yet
-;(list '29 (eq? (interpret "t37.txt") 20040)) ; not implemented yet
-;(list '30 (eq? (interpret "t38.txt") 101)) ; not implemented yet
+(list '27 (eq? (interpret "t35.txt") 125))
+(list '28 (eq? (interpret "t36.txt") 110))
+(list '29 (eq? (interpret "t37.txt") 20040)) ; not implemented yet
+(list '30 (eq? (interpret "t38.txt") 101))
 ;(eq? (interpret "t39.txt")) ; should return error --> not implemented yet
 
 ;tests prithik wrote

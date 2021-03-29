@@ -1,13 +1,11 @@
-var x = 0;
 var y = 0;
-while(x < 10){
-	x = x + 1;	
-	if(x < 5){
-		x = x;	
-	}
-	else{
-		continue;
-	}
-	y = y + 1;
+try
+{
+	var x = 0;
+	x = 100;
+	y = x;
+	
 }
-return y;
+finally{
+	return y;
+}
