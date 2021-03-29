@@ -215,7 +215,7 @@
       [(eq? (MI_GetOperation expression) '<=) (<= (M-Integer(MI_GetFirstOperand expression)) (M-Integer(MI_GetSecondOperand expression)))]
       [(eq? (MI_GetOperation expression) '==) (eq? (M-Integer(MI_GetFirstOperand expression)) (M-Integer(MI_GetSecondOperand expression)))]
       [(eq? (MI_GetOperation expression) '!=) (not (eq? (M-Integer(MI_GetFirstOperand expression)) (M-Integer(MI_GetSecondOperand expression))))]
-      [else (error "No way to resolve expression!")])))
+      [else (error "No way to resolve expression!" expression)])))
 
 ;Begins entry point for expression evaluation
 (define M-Expression
@@ -552,16 +552,29 @@
      (CB_RemoveLayer (step-through-cc (CB_GetBody statement) (CB_AddLayer M-State) return break continue throw))))
 
 ;**************************************Throw**************************************
+;gets expression part of statement after throw keyword
+
 (define T_GetBody
   (lambda(statement)
     (car (cdr statement))
     ))
 
+;call throw continuation sending current M-State and thrown value packaged together 
 (define HandleThrow
   (lambda(M-State statement throw)
-    (throw (M-Value M-State (T_GetBody statement)))))
+    (throw (list (M-Value M-State (T_GetBody statement)) M-State))))
 
+ ;helper function to get thrown value from throw continuation return
+ (define Throw_GetValue
+   (lambda(lis)
+   (car lis)))
+  
+  ;helper function to get M-State from throw continuation return
+ (define Throw_GetMState
+   (lambda(lis)
+   (car (cdr lis))))
 
+  
 ;**************************************TryCatch**************************************
 
 ;returns #t if there is a catch body, false otherwise
@@ -609,12 +622,21 @@
       [(IsVarUndeclared? M-State varName) (AddNewBinding M-State varName thrown_value)]
       [else (error "error name in catch already been used")])))
 
+;analyzes thrown_value to see if it is M-State alone, or thrown-value packaged with M-State
+(define TC_GotThrown?
+  (lambda(tv)
+    (cond
+      [(null? tv) #f]
+      [else (not (list? (car tv)))]
+    )
+    ))
+
 (define TC_HandleCatch
-  (lambda(varName thrown_value M-State body return break continue throw)
+  (lambda(varName thrown_value body return break continue throw)
     (cond;check if thrown value is number or mstate
-      [(or (eq? varName 'null) (list? thrown_value)) thrown_value];if thown_value is a list, its  the M-state from try block, just run finally block, if its not list, something was thrown, run catch block
-      ;thrown value isa literal, run catch block
-      [else (RemoveBinding (step-through-cc body (TC_AddCatchValueToMState M-State varName thrown_value) return break continue throw) varName)])))
+      [(or (eq? varName 'null) (not (TC_GotThrown? thrown_value))) thrown_value];if it didnt get thrown return M-State, if itdid get thrown,, run catch block
+      ;thrown value is a literal, run catch block
+      [else (RemoveBinding (step-through-cc body (TC_AddCatchValueToMState (Throw_GetMState thrown_value) varName (Throw_GetValue thrown_value)) return break continue throw) varName)])))
      
 (define TC_HandleGeneric
   (lambda(M-State body return break continue throw)
@@ -625,7 +647,7 @@
     ;run try block, return value of try block run into catch block, catch sees if it should run, then run finally block
     (TC_HandleGeneric
      (TC_HandleCatch (TC_GetVarName statement) (call/cc (lambda(throw)
-      (TC_HandleGeneric M-State (TC_GetTryBody statement) return break continue throw))) M-State
+      (TC_HandleGeneric M-State (TC_GetTryBody statement) return break continue throw)))
        (TC_GetCatchBody statement) return break continue throw)
         (TC_GetFinallyBody statement) return break continue throw)))
 
@@ -814,12 +836,12 @@
 ;(list '26 (eq? (interpret "t34.txt") 12 )) ;
 (list '27 (eq? (interpret "t35.txt") 125))
 (list '28 (eq? (interpret "t36.txt") 110))
-(list '29 (eq? (interpret "t37.txt") 20040)) ; not implemented yet
+(list '29 (eq? (interpret "t37.txt") 2000400)) ; not working
 (list '30 (eq? (interpret "t38.txt") 101))
-;(eq? (interpret "t39.txt")) ; should return error --> not implemented yet
+;(eq? (interpret "t39.txt")) ; should return error
 
 ;tests prithik wrote
-(list '31 (eq? (interpret "t40.txt") 9)) ; not working correctly
+(list '31 (eq? (interpret "t40.txt") 9)) ; 
 (list '32 (eq? (interpret "t41.txt") 5)) ;
 
 ;(interpret "t41.txt")
