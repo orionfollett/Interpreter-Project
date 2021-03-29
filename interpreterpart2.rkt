@@ -4,42 +4,33 @@
 ;Orion Follett
 ;Prithik Karthikeyan
 
-;TODO
-;CHANGE THE WAY RETURN WORKS TO BE MORE FLEXIBLE AND REUSABLE FOR FUTURE, changing return will affect if, code blocks, and while statements
-;-return doesn't always work correctly out of code blocks
-;-test code blocks and scoping with if and while loops, fix if and while to work more intuitively with code blocks
-;-try catch finally, with returns
-;break, continue, throw, "real return"
 
+;Order of functions - Entry point of program is at the bottom!
 
-;Part 2 General Idea/ List of Features
-;2. break, continue, throw
-;3. try catch finally 
-;
-;For scoping, M-state will now be a more nested list, '(((f 5) (h 6)) (d 4) (y 2) (x 1))
-;when a code block begins, start a new layer in M-State by consing an empty list onto M-State, '(() (x 3) (r 4) (e 5))
-;when a code block ends, pop off layer that corresponds to that code block by removing the car of Mstate
-;this means that the order of M-State will matter
-;task 1 is to modify M-state functions to account for these changes.
-;Takse  1.1 modify add and remove binding to work for multilayered things
-;task 2 is write handle code block to add a layer at the beginning and remove a layer at the end
+;main interpret function
+;General Helper Functions
+;M-Expression and Associated Functions
+;M-Value
+;M-State
+;Variable Declation
+;Assignment
+;If statements
+;While statements
+;Code block handling
+;Try Catch
+;Main step-through loop helper functions
+;Commented out tests and personal comments
 
-;Part 1 General Idea:
-;parser filename gives a list where each sublist is a statement
-;there are five different types of statements
+;Main Interpreter function
 
-;variable declaration	(var variable) or (var variable value)
-;assignment	(= variable expression)
-;return	(return expression)
-;if statement	(if conditional then-statement optional-else-statement)
-;while statement	(while conditional body-statement)
+;Accepts a filename ex: (interpret "testProgram.txt")
+;Outputs the return statement of the Simple Program (or M-State if there is no return statement for debugging purposes)
 
-;interpret will step through each statement, execute what needs to get done based on that line, and then interpret the rest of the code
+(define interpret
+  (lambda (filename)
+     (step-through (parser filename) '())))
 
-;There is an M-state list that is passed nearly everywhere, it will have all variable bindings so '((x 1) (y 3) ...)
-
-;return statement indicates end of the program, M-State gets changed to (return value) and the program returns the value
-
+;(interpret "t.txt")
 
 
 ;********************************General Helper Functions********************************
@@ -50,7 +41,6 @@
     (if (null? l1)
         (return l2)
         (append-cps (cdr l1) l2 (lambda(v) (return (cons (car l1) v)))))))
-       
 
 ;helper function that flattens a list of lists to just a normal list
 (define flatten
@@ -138,7 +128,8 @@
       [(eq? val #f) 'false]
       [else (error "Value that is not a bool trying to be converted into a bool!")])))
 
-;*******************************HELPER FUNCTIONS FOR M_INTEGER**************************
+
+;*******************************M_Expression Functions**************************
 
 ;MI_GetOperation means it is a helper function only to be used with M-Integer
 ;get-operation accepts a list in prefix notation
@@ -357,8 +348,7 @@
   (lambda (M-State varName varVal)
     (cond
       [(IsVarUndeclared? M-State varName) (AddNewBinding M-State varName varVal)]
-      [else (ChangeBinding-Exists M-State varName varVal)]
-      )))
+      [else (ChangeBinding-Exists M-State varName varVal)])))
 
 ;changes the value of a binding, knowing that the binding exists
 (define ChangeBinding-Exists
@@ -369,16 +359,13 @@
      [(eq? (GetFirstBindingName M-State) varName) (ChangeFirstBindingValue M-State varVal)]
      [else (cons (GetFirstBinding M-State) (ChangeBinding-Exists (cdr M-State) varName varVal))])))
 
-;[else (AddNewBinding (RemoveBinding M-State varName) varName varVal)])))
-
 ;takes in two atoms, returns null if they are both null, or the value of the one that is not null
 (define ResolveMultiLayerSearch
   (lambda(a1 a2)
     (cond
       [(and (eq? a1 'null) (eq? a2 'null)) 'null]
       [(eq? a1 'null) a2]
-      [else a1]
-      )))
+      [else a1])))
 
 ;LookupValue -> takes in M-State, variable name, returns the value associated with that variable
 ;returns 'null if there is no value associated with that variable
@@ -411,9 +398,8 @@
   (lambda (M-State statement)
     (cond
       [(IsVarUndeclared? M-State (VD_GetVarName statement)) (AddNewBinding M-State (VD_GetVarName statement) (M-Value M-State (VD_GetVarValue statement)))]
-      [else (error "Error: " (VD_GetVarName statement) "variable already declared")]
-    )))
-
+      [else (error "Error: " (VD_GetVarName statement) "variable already declared")])))
+    
 
 ;****************************Assignment Statement Functions******************************************
 
@@ -457,14 +443,12 @@
     (cond
       [(null? statement) '()]
       [(null? (cdr (cdr (cdr statement)))) '()]
-      [else (list (car (cdr (cdr (cdr statement)))))]
-    )))
+      [else (list (car (cdr (cdr (cdr statement)))))])))
 
 ;I_IsIf? takes a statement, returns true if the beginning is a full if block
 (define I_IsIf?
   (lambda (statement)
-    (eq? (car statement) 'if)
-    ))
+    (eq? (car statement) 'if)))
 
 ;HandleIf -> Takes in M-State and an if statement, returns updated M-State
 (define HandleIf
@@ -474,8 +458,7 @@
     [(M-Value M-State (I_GetIfCondition statement)) (step-through-cc (I_GetIfBody statement) M-State return break continue throw)] ;if statement was true, so run the body
     [(and (not (null? (I_GetNext statement))) (I_IsIf? (I_GetNext statement))) (HandleIf M-State (I_GetNext statement) return break continue throw)] ;if statement was false, but there are more ifs to check check the next one
     [(null? (I_GetNext statement)) M-State];nothing left to check, return the state
-    [else (step-through-cc (I_GetNext statement) M-State return break continue throw)];there is an else statement remaining, run that code, then return the updated M-State
-    )))
+    [else (step-through-cc (I_GetNext statement) M-State return break continue throw)])));there is an else statement remaining, run that code, then return the updated M-State
 
 
 ;*****************************While Statement functions ******************************************
@@ -484,21 +467,17 @@
 ;W_GetWhileCondition takes in a while statement and returns the loop condition
 (define W_GetWhileCondition
   (lambda (statement)
-    (car (cdr statement))
-    ))
+    (car (cdr statement))))
 
 ;W_CheckWhileCondition takes in a while statement and return true or false depending on if it is true or false
 (define W_CheckWhileCondition
   (lambda (M-State statement)
-    (M-Value M-State (W_GetWhileCondition statement))
-    ))
+    (M-Value M-State (W_GetWhileCondition statement))))
 
 ;W_GetWhileBody takes in a while statement and returns the body of the loop
 (define W_GetWhileBody
   (lambda (statement)
-    (list (car (cdr (cdr statement))))
-    ))
-;(while (< x 7) (begin (if (... ... ...) (... ...) (... ...)) (if (... ... ...) (... ...))))
+    (list (car (cdr (cdr statement))))))
 
 ;main while loop function
 (define loop
@@ -519,8 +498,7 @@
 ;R_GetReturn, helper function for HandleReturn, takes in a return statement returns the return value/expression in the return statement
 (define R_GetReturn
   (lambda (statement)
-    (car (cdr statement))
-    ))
+    (car (cdr statement))))
 
 ;HandleReturn -> returns the return statement in proper form
 (define HandleReturn
@@ -536,7 +514,7 @@
   (lambda (M-State)
    (cons '() M-State)))
 
-;helper function for RemoveLayer, removes the layer
+;helper function for RemoveLayer, removes the last added layer of M-State
 (define CB_RemoveLayer
 (lambda(M-State)
   (cdr M-State)))
@@ -551,25 +529,25 @@
   (lambda(M-State statement return break continue throw)
      (CB_RemoveLayer (step-through-cc (CB_GetBody statement) (CB_AddLayer M-State) return break continue throw))))
 
-;**************************************Throw**************************************
-;gets expression part of statement after throw keyword
 
+;**************************************Throw**************************************
+
+;gets expression part of statement after throw keyword
 (define T_GetBody
   (lambda(statement)
-    (car (cdr statement))
-    ))
+    (car (cdr statement))))
 
-;call throw continuation sending current M-State and thrown value packaged together 
+;calls throw continuation sending current M-State and thrown value packaged together 
 (define HandleThrow
   (lambda(M-State statement throw)
     (throw (list (M-Value M-State (T_GetBody statement)) M-State))))
 
- ;helper function to get thrown value from throw continuation return
+ ;global helper function to get thrown value from throw continuation return
  (define Throw_GetValue
    (lambda(lis)
    (car lis)))
   
-  ;helper function to get M-State from throw continuation return
+  ;global helper function to get M-State from throw continuation return
  (define Throw_GetMState
    (lambda(lis)
    (car (cdr lis))))
@@ -580,14 +558,12 @@
 ;returns #t if there is a catch body, false otherwise
 (define TC_IsCatchBody?
   (lambda(statement)
-    (not (null? (car (cdr (cdr statement)))))
-    ))
+    (not (null? (car (cdr (cdr statement)))))))
 
 ;returns #t if there is a finally body, false otherwise
 (define TC_IsFinallyBody?
   (lambda(statement)
-    (not (null? (car (cdr (cdr (cdr statement))))))
-    ))
+    (not (null? (car (cdr (cdr (cdr statement))))))))
 
 ;returns the  body of the try statement with the "try" keyword stripped
 (define TC_GetTryBody
@@ -608,7 +584,7 @@
     [(TC_IsFinallyBody? statement) (car (cdr (car (cdr (cdr (cdr statement))))))]
     [else '()])))
 
-;get name of catch variable so it can be referenced in catch block
+;gets name of catch variable so it can be referenced in catch block
 (define TC_GetVarName
   (lambda(statement)
     (cond
@@ -622,29 +598,30 @@
       [(IsVarUndeclared? M-State varName) (AddNewBinding M-State varName thrown_value)]
       [else (error "error name in catch already been used")])))
 
-;analyzes thrown_value to see if it is M-State alone, or thrown-value packaged with M-State
+;analyzes thrown_value to see if it is M-State alone, or thrown-value packaged with M-State, returns true if there was athrow intry, false otherwise
 (define TC_GotThrown?
   (lambda(tv)
     (cond
       [(null? tv) #f]
-      [else (not (list? (car tv)))]
-    )
-    ))
+      [else (not (list? (car tv)))])))
 
+;handles the catch block and returns M-State after completion
 (define TC_HandleCatch
   (lambda(varName thrown_value body return break continue throw)
     (cond;check if thrown value is number or mstate
       [(or (eq? varName 'null) (not (TC_GotThrown? thrown_value))) thrown_value];if it didnt get thrown return M-State, if itdid get thrown,, run catch block
       ;thrown value is a literal, run catch block
       [else (RemoveBinding (step-through-cc body (TC_AddCatchValueToMState (Throw_GetMState thrown_value) varName (Throw_GetValue thrown_value)) return break continue throw) varName)])))
-     
+
+;handles a generic block, either try block or finally block
 (define TC_HandleGeneric
   (lambda(M-State body return break continue throw)
     (step-through-cc body M-State return break continue throw)))
 
+;takes in a try catch statement, continuations, and M-State, updates M-State based on the statement
 (define HandleTryCatch
   (lambda(M-State statement return break continue throw)
-    ;run try block, return value of try block run into catch block, catch sees if it should run, then run finally block
+    ;run try block, return value of try block run into catch block, catch sees if it should run itself, then run finally block
     (TC_HandleGeneric
      (TC_HandleCatch (TC_GetVarName statement) (call/cc (lambda(throw)
       (TC_HandleGeneric M-State (TC_GetTryBody statement) return break continue throw)))
@@ -741,7 +718,7 @@
       [(eq? (car statement) 'try) #t]
       [else #f])))
 
-;ReturnProgram - takes in the result of the program, decides what to output at the end
+;ReturnProgram - takes in the result of the program, formats what to output at the end
 (define FormatReturn
    (lambda (returnVal)
     (cond
@@ -760,15 +737,16 @@
 (define STD_THROW
   (lambda(v) (error "Error: " v)))
 
-;****************************************************************************************
+;**************************************MAIN STEP THROUGH LOOP******************************************
 
 ;step-through takes program: the parsed program, M-state: a list of bindings
 ;it is used to step through each line of the program, it returns the return value if the program returned, or M-State if it didn't
+;this should only be run at start of program
 (define step-through
   (lambda (program M-State)
    (FormatReturn (call/cc (lambda (return) (step-through-cc program M-State return STD_BREAK STD_CONT STD_THROW))))))
 
-;step-through-cps is the same as step-through but in cps style
+;step-through-cps is the call-cc helper function for step-through so that return continuation can operate correctly
 (define step-through-cc
   (lambda (program M-State return break continue throw)
    (cond
@@ -782,22 +760,11 @@
                                       (HandleWhile M-State (GetFirstStatement program) return break continue throw))) return break continue throw)]
      [(IsTryCatchStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleTryCatch M-State (GetFirstStatement program) return break continue throw) return break continue throw)]
      [(IsCodeBlockStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleCodeBlock M-State (GetFirstStatement program) return break continue throw) return break continue throw)]
-     [(IsBreakStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (break (RemoveLayer M-State)) return STD_BREAK continue throw)] ;breaks out of a loop or does nothing if there was no loop
-     [(IsContinueStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (continue M-State) return break STD_CONT throw)] ;goes back to beginning of loop or does nothing if no loop
+     [(IsBreakStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (break (RemoveLayer M-State)) return STD_BREAK continue throw)] ;breaks out of a loop or errors if no loop
+     [(IsContinueStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (continue M-State) return break STD_CONT throw)] ;goes back to beginning of loop or errors if no loop
      [(IsReturnStatement? (GetFirstStatement program)) (HandleReturn M-State (GetFirstStatement program) return)]; just returns M-State with only return value
      [(IsThrowStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleThrow M-State (GetFirstStatement program) throw) return break continue STD_THROW)] 
      [else M-State])));if the program ends without a return statement, just print M-State so you can see all the variables
-
-;Main Interpreter function
-
-;Accepts a filename ex: (interpret "testProgram.txt")
-;Outputs the return statement of the Simple Program
-
-(define interpret
-  (lambda (filename)
-     (step-through (parser filename) '())))
-
-;(interpret "t.txt")
 
 ;Test Cases:
 ;
@@ -839,10 +806,39 @@
 (list '29 (eq? (interpret "t37.txt") 2000400)) ; not working
 (list '30 (eq? (interpret "t38.txt") 101))
 ;(eq? (interpret "t39.txt")) ; should return error
-
-;tests prithik wrote
 (list '31 (eq? (interpret "t40.txt") 9)) ; 
 (list '32 (eq? (interpret "t41.txt") 5)) ;
 
-;(interpret "t41.txt")
+
+;Part 2 General Idea/ List of Features
+;2. break, continue, throw
+;3. try catch finally 
+;
+;For scoping, M-state will now be a more nested list, '(((f 5) (h 6)) (d 4) (y 2) (x 1))
+;when a code block begins, start a new layer in M-State by consing an empty list onto M-State, '(() (x 3) (r 4) (e 5))
+;when a code block ends, pop off layer that corresponds to that code block by removing the car of Mstate
+;this means that the order of M-State will matter
+;task 1 is to modify M-state functions to account for these changes.
+;Takse  1.1 modify add and remove binding to work for multilayered things
+;task 2 is write handle code block to add a layer at the beginning and remove a layer at the end
+
+;Part 1 General Idea:
+;parser filename gives a list where each sublist is a statement
+;there are five different types of statements
+
+;variable declaration	(var variable) or (var variable value)
+;assignment	(= variable expression)
+;return	(return expression)
+;if statement	(if conditional then-statement optional-else-statement)
+;while statement	(while conditional body-statement)
+
+;interpret will step through each statement, execute what needs to get done based on that line, and then interpret the rest of the code
+
+;There is an M-state list that is passed nearly everywhere, it will have all variable bindings so '((x 1) (y 3) ...)
+
+;return statement indicates end of the program, M-State gets changed to (return value) and the program returns the value
+
+
+
+
 
