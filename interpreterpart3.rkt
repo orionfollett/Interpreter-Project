@@ -14,8 +14,6 @@
   (lambda (filename)
      (step-through (parser filename) '())))
 
-;(interpret "t.txt")
-
 ;Plan of Action for Functions:
 
 ;1. change large scale things, only variable and function declaration and assignment statements outside of functions, analyze everything then run main
@@ -35,13 +33,18 @@
 ;this should only be run at start of program
 (define step-through
   (lambda (program env)
-   (FormatReturn (call/cc (lambda (return) (step-through-cc program env return STD_BREAK STD_CONT STD_THROW))))))
+   (FormatReturn (call/cc (lambda (return) (step-through-outer-layer program env return STD_BREAK STD_CONT STD_THROW))))))
 
-;step-through-outer-layer
+;step-through-outer-layer - collects all the global variables and function declarations outside of main
 (define step-through-outer-layer
   (lambda (program env return break continue throw)
-    1
-    ))
+    (cond
+      [(null? program) (step-through-cc (GetMain env) (CB_AddLayer env) return break continue throw)];add layer since you are entering a function
+      [(IsVarDecStatement? (GetFirstStatement program)) (step-through-outer-layer (cdr program) (HandleVarDec env (GetFirstStatement program) throw) return break continue throw)]
+      [(IsAssignStatement? (GetFirstStatement program)) (step-through-outer-layer (cdr program) (HandleAssign env (GetFirstStatement program) throw) return break continue throw)]
+      [(IsFuncDecStatement? (GetFirstStatement program)) (step-through-outer-layer (cdr program) (HandleFuncDec env (GetFirstStatement program) return break continue throw) return break continue throw)]
+      [else (error "Statement not allowed outside of function or undefined")]
+      )))
 
 ;step-through-cps is the call-cc helper function for step-through so that return continuation can operate correctly
 (define step-through-cc
@@ -49,8 +52,8 @@
    (cond
      ; need to check this first to prevent errors with checking the cdr or car of an empty list, if program ends unexpectedly, will print env
      [(null? program) env]
-     [(IsVarDecStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleVarDec env (GetFirstStatement program)) return break continue throw)]
-     [(IsAssignStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleAssign env (GetFirstStatement program)) return break continue throw)]
+     [(IsVarDecStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleVarDec env (GetFirstStatement program) throw) return break continue throw)]
+     [(IsAssignStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleAssign env (GetFirstStatement program) throw) return break continue throw)]
      [(IsIfStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleIf env (GetFirstStatement program) return break continue throw) return break continue throw)]
      [(IsWhileStatement? (GetFirstStatement program))
       (step-through-cc (cdr program) (call/cc (lambda(break)
@@ -59,9 +62,134 @@
      [(IsCodeBlockStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleCodeBlock env (GetFirstStatement program) return break continue throw) return break continue throw)]
      [(IsBreakStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (break (RemoveLayer env)) return STD_BREAK continue throw)] ;breaks out of a loop or errors if no loop
      [(IsContinueStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (continue env) return break STD_CONT throw)] ;goes back to beginning of loop or errors if no loop
-     [(IsReturnStatement? (GetFirstStatement program)) (HandleReturn env (GetFirstStatement program) return)]; just returns env with only return value
-     [(IsThrowStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleThrow env (GetFirstStatement program) throw) return break continue STD_THROW)] 
+     [(IsReturnStatement? (GetFirstStatement program)) (HandleReturn env (GetFirstStatement program) return)]
+     [(IsThrowStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleThrow env (GetFirstStatement program) throw) return break continue STD_THROW)]
+     [(IsFuncDecStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleFuncDec env (GetFirstStatement program) return break continue throw) return break continue throw)]
+     [(IsFuncallStatement? (GetFirstStatement program)) (step-through-cc (cdr program) (HandleFuncall env (GetFirstStatement program) return break continue throw) return break continue throw)]
      [else env])));if the program ends without a return statement, just print env so you can see all the variables
+
+
+;****************************************Handle Func Definition****************************************
+
+;places the function definition in the current environment
+;function definition is of the form: (funcname closure)
+;where closure is ((list of formal parameters) (body) (env))
+(define HandleFuncDec
+  (lambda(env statement return break continue throw)
+    (AddFunctionDecToEnv env (FD_GetFuncName statement) (FD_GetFuncParam statement) (FD_GetFuncBody statement))
+    ))
+
+(define FD_GetFuncName
+  (lambda (statement)
+    (car (cdr statement))))
+
+(define FD_GetFuncParam
+  (lambda (statement)
+    (car (cdr (cdr statement)))))
+
+(define FD_GetFuncBody
+  (lambda (statement)
+    (car (cdr (cdr (cdr statement))))))
+
+;****************************************Handle Function Call*******************************************
+
+;returns main body
+(define GetMain
+  (lambda(env)
+    (if (IsVarUndeclared? env 'main)
+        (error "no main function")
+        (FC_GetFuncBody env 'main))))
+    
+(define FC_GetFuncName
+  (lambda (statement)
+    (car (cdr statement))))
+
+(define FC_GetFormalParams
+  (lambda(env name)
+    (car (LookupValue env name))))
+
+;collects all the args passed to function
+(define FC_GetArgs
+  (lambda(statement)
+    (cdr (cdr statement))))
+
+(define FC_ResolveArgs
+  (lambda(env args throw)
+    (cond
+      [(null? args) args]
+      [else (cons (M-Value env (car args) throw) (FC_ResolveArgs env (cdr args) throw))]
+    )))
+      
+(define FC_GetFuncBody
+  (lambda (env name)
+    (car (cdr (LookupValue env name)))))
+
+;removes current layer, keeps global variables and function definitions adds formal params to neew layer in env and sets their value to be the arguments passed into the function
+(define FC_PrepEnv
+  (lambda(env fparams args throw);fparams are formal parameters that come from function definition, args are arguments being passed into function, they must already be resolved to values
+    (cond
+      [(and (null? args) (null? fparams)) env]
+      [(or (null? args) (null? fparams)) (error "Mismatch number of arguments in function call")]
+      [else (FC_PrepEnv (AddNewBinding env (car fparams) (M-Value env (car args) throw)) (cdr fparams) (cdr args) throw)]
+     )))
+
+;calls FC_UpdateEnv with correct paramters (because there couldve been a return value)
+;return format (return val env)
+(define FC_HandleFuncOutput
+  (lambda(env output)
+    (cond
+      [(null? output) env]
+      [(eq? (car output) 'return) (FC_UpdateEnv env (cdr(car (cdr (cdr output)))))]
+      [else  (FC_UpdateEnv env output)]
+    )))
+
+;'(() (x 1) (test ((p1 p2) ((return 1)))) (main (() ((var y (funcall test 1 2)) (return y)))))
+;'(((p1 1) (p2 2)) (x 1) (test ((p1 p2) ((return 1)))) (main (() ((var y (funcall test 1 2)) (return y)))))
+
+;'(() (x 1) (test ((p1 p2) ((var t 1) (return 1)))) (main (() ((var y (funcall test 1 2)) (return y)))))
+;'(((p1 1) (p2 2) (t 1)) (x 1) (test ((p1 p2) ((var t 1) (return 1)))) (main (() ((var y (funcall test 1 2)) (return y)))))
+
+;(HandleFuncall '(() (x 1) (test ((p1 p2) ((var t 1) (return 1)))) (main (() ((var y (funcall test 1 2)) (return y)))))
+ ;             '(funcall test 1 2) #f #f #f #f)
+
+;adjusts global variables that changed, loops through changed and calls changebinding on env
+(define FC_UpdateEnv
+  (lambda(env changed)
+    ;(list env '() changed)
+    (cond
+      [(or (null? env) (null? changed)) env]
+      [(IsNewLayer? changed) (cons (FC_UpdateEnv env (car changed)) (FC_UpdateEnv env (cdr changed)))]
+      [else (ChangeBinding-Exists env (GetFirstBindingName changed) (GetFirstBindingValue changed))])))
+
+;HandleNormalCall returns an updated env based on function call
+(define FC_HandleNormalCall
+  (lambda (env statement return break continue throw)
+     (call/cc (lambda (return-from-function)
+      (CB_RemoveLayer (step-through-cc (FC_GetFuncBody env (FC_GetFuncName statement)) ;get function body
+       (FC_PrepEnv (CB_AddLayer (CB_RemoveLayer env)) (FC_GetFormalParams env (FC_GetFuncName statement)) (FC_ResolveArgs env (FC_GetArgs statement) throw) throw) ; prepare env for function
+        return-from-function STD_BREAK STD_CONT throw))))));pass in continuations
+
+;HandleFuncall either returns an updated env or the return value depending on the return continuation
+(define HandleFuncall
+  (lambda (env statement return break continue throw)
+    (if (eq? return 'M-F)
+        (FC_FormatMF (FC_HandleMFunctionCall env statement return break continue throw)) ; update env but return just a value
+        (FC_HandleFuncOutput env (FC_HandleNormalCall env statement return break continue throw))))) ; update env if global variables changes
+
+;format func call if it is being used for m value, if it returns an env then send null so that it can error
+(define FC_FormatMF
+  (lambda (output)
+    (if (list? output)
+        'null
+        output
+    )))
+
+;HandleMFunctionCall returns the return value of the function and changes global variables that could have changed
+(define FC_HandleMFunctionCall
+  (lambda (env statement return break continue throw)
+     (call/cc (lambda (return-from-function) (CB_RemoveLayer (step-through-cc (FC_GetFuncBody env (FC_GetFuncName statement)) ;get function body
+      (FC_PrepEnv (CB_AddLayer (CB_RemoveLayer env)) (FC_GetFormalParams env (FC_GetFuncName statement)) (FC_ResolveArgs env (FC_GetArgs statement) throw) throw) ; prepare env for function
+       return-from-function STD_BREAK STD_CONT throw))))));pass in continuations
 
 ;****************************************Handle Code Block**********************************************
 
@@ -96,7 +224,7 @@
 ;calls throw continuation sending current env and thrown value packaged together 
 (define HandleThrow
   (lambda(env statement throw)
-    (throw (list (M-Value env (T_GetBody statement)) env))))
+    (throw (list (M-Value env (T_GetBody statement) throw) env))))
 
  ;global helper function to get thrown value from throw continuation return
  (define Throw_GetValue
@@ -293,6 +421,7 @@
 (define FormatReturn
    (lambda (returnVal)
     (cond
+      [(list? returnVal) (FormatReturn (car (cdr returnVal)))]
       [(eq? #t returnVal) 'true]
       [(eq? #f returnVal) 'false]
       [else returnVal])))
@@ -338,7 +467,7 @@
   (lambda (env statement return break continue throw)
     (cond
     [(null? statement) env];none of the if statements were true
-    [(M-Value env (I_GetIfCondition statement)) (step-through-cc (I_GetIfBody statement) env return break continue throw)] ;if statement was true, so run the body
+    [(M-Value env (I_GetIfCondition statement) throw) (step-through-cc (I_GetIfBody statement) env return break continue throw)] ;if statement was true, so run the body
     [(and (not (null? (I_GetNext statement))) (I_IsIf? (I_GetNext statement))) (HandleIf env (I_GetNext statement) return break continue throw)] ;if statement was false, but there are more ifs to check check the next one
     [(null? (I_GetNext statement)) env];nothing left to check, return the state
     [else (step-through-cc (I_GetNext statement) env return break continue throw)])));there is an else statement remaining, run that code, then return the updated env
@@ -352,8 +481,8 @@
 
 ;W_CheckWhileCondition takes in a while statement and return true or false depending on if it is true or false
 (define W_CheckWhileCondition
-  (lambda (env statement)
-    (M-Value env (W_GetWhileCondition statement))))
+  (lambda (env statement throw)
+    (M-Value env (W_GetWhileCondition statement) throw)))
 
 ;W_GetWhileBody takes in a while statement and returns the body of the loop
 (define W_GetWhileBody
@@ -364,7 +493,7 @@
 (define loop
   (lambda(env statement return break continue throw)
    (cond
-    [(W_CheckWhileCondition env statement) 
+    [(W_CheckWhileCondition env statement throw) 
                           (loop (call/cc (lambda (c) (step-through-cc (W_GetWhileBody statement) env return break c throw))) statement return break continue throw)]
     [else env])));loop condition is no longer true, loop is done
 
@@ -380,13 +509,11 @@
   (lambda (statement)
     (car (cdr statement))))
 
-;HandleReturn -> returns the return statement in proper form
+;HandleReturn -> returns the return statement in proper form:  (return returnval env)
 (define HandleReturn
   (lambda (env statement return)
     ;(list (list 'return (M-Value env (R_GetReturn statement))))))
-    (return (M-Value env (R_GetReturn statement)))))
-
-
+    (return (list 'return (M-Value env (R_GetReturn statement) STD_THROW) env))))
 
 ;****************************Variable Declaration Functions******************************************
 ;Variable declaration helper functions specific to variable declaration statements are marked VD_
@@ -405,9 +532,9 @@
 
 ;HandleVarDec takes in env and variable declaration statement, returns updated m state
 (define HandleVarDec
-  (lambda (env statement)
+  (lambda (env statement throw)
     (cond
-      [(IsVarUndeclared? env (VD_GetVarName statement)) (AddNewBinding env (VD_GetVarName statement) (M-Value env (VD_GetVarValue statement)))]
+      [(IsVarUndeclared? env (VD_GetVarName statement)) (AddNewBinding env (VD_GetVarName statement) (M-Value env (VD_GetVarValue statement) throw))]
       [else (error "Error: " (VD_GetVarName statement) "variable already declared")])))
     
 
@@ -428,10 +555,10 @@
   
 ;HandleAssign -> Takes in env and an assignment statement, returns updated env
 (define HandleAssign
-  (lambda (env statement)
+  (lambda (env statement throw)
     (cond
       [(IsVarUndeclared? env (AS_GetVarName statement)) (error (AS_GetVarName statement) "Assignment before declaration!")]
-      [else (ChangeBinding env (AS_GetVarName statement) (M-Value env (AS_GetVarVal statement)))])))
+      [else (ChangeBinding env (AS_GetVarName statement) (M-Value env (AS_GetVarVal statement) throw))])))
 
 
 ;*************************env Helper Functions**************************
@@ -458,7 +585,7 @@
   (lambda (env)
     (cond
       [(null? env) '()]
-      [else (car (cdr (GetFirstBinding env)))])))
+      [else (unbox (car (cdr (GetFirstBinding env))))])))
 
 ;IsNameUnused -> takes in env and variable name, makes sure name is not in the list
 (define IsVarUndeclared?
@@ -494,7 +621,7 @@
   (lambda (env varName varVal)
     (cond
       [(IsNewLayer? env) (cons (AddNewBinding (GetFirstLayer env) varName varVal) (RemoveLayer env))]
-      [else (append env (list (list varName varVal)))])))
+      [else (append env (list (list varName (box varVal))))])))
 
 ;RemoveBinding -> takes in env, variable name returns env without that variable
 ;If the binding doesnt exist, env is unchanged
@@ -515,8 +642,16 @@
 ;assumes env has no layers and is not empty
 (define ChangeFirstBindingValue
   (lambda (env varVal)
-    (cons (list (GetFirstBindingName env) varVal) (PopFirstBinding env))))
+    ;(cons (list (GetFirstBindingName env) varVal) (PopFirstBinding env))))
+    (begin (set-box! (GetFirstBindingValueBox env) varVal) env)))
 
+;GetFirstBindingValueBox -> takes in env, returns first variable value box of first binding
+(define GetFirstBindingValueBox
+  (lambda (env)
+    (cond
+      [(null? env) '()]
+      [else (car (cdr (GetFirstBinding env)))])))
+    
 ;ChangeBinding -> takes in env, variable name, new variable value, returns env with old variable value replaced by new variable value
 ;If the binding doesnt exist, it creates a new one
 
@@ -553,6 +688,10 @@
       [(eq? (GetFirstBindingName env) varName) (GetFirstBindingValue env)]
       [else (LookupValue (cdr env) varName)])))
 
+(define AddFunctionDecToEnv
+  (lambda(env funcname funcparams funcbody)
+    (AddNewBinding env funcname (list funcparams funcbody))))
+
 ;***********************************M-Value Helper Functions*****************************************
 
 ;there are three types of expressions, compare expressions, boolean expressions, and integer expressions
@@ -568,12 +707,12 @@
 ;MV_ConvertVarToVal* -> takes env, expression: an integer expression that may have variables in it, and varList: a list of all the variables in the expression
 ;converts all the variables into values and returns the list
 (define MV_ConvertVarToVal*
-  (lambda (env expression varList)
+  (lambda (env expression varList throw)
     (cond
       [(null? varList) expression]
-      [(IsVarUndeclared? env (car varList)) (error " variable not defined in an expression variable name: " (car varList))]
-      [else (MV_ConvertVarToVal* env (replaceall* (car varList) (LookupValue env (car varList)) expression) (cdr varList))])))
-
+      [(and (not (eq? (car varList) 'funcall)) (IsVarUndeclared? env (car varList))) (error " variable not defined in an expression variable name: " (car varList))]
+      ;[else (MV_ConvertVarToVal* env (replaceall* (car varList) (LookupValue env (car varList)) expression) (cdr varList))])))
+      [else (MV_ConvertVarToVal* env (replaceall* (car varList) (M-Value env (car varList) throw) expression) (cdr varList) throw)])))
 ;MV_NoProcessingNeeded - takes in val, returns true if it is a value, false if it needs further processing
 (define MV_NoProcessingNeeded
   (lambda (val)
@@ -586,17 +725,26 @@
     (and (list? val) (contains-bool-operator (flatten val)))
     ))
 
+(define M-Function
+ (lambda(env func throw)
+   (M-FormatFunction (HandleFuncall env func 'M-F STD_BREAK STD_CONT throw))))
+
+(define M-FormatFunction
+  (lambda(input)
+  (if (or (list? input) (eq? input 'null))
+      (error "function did not resolve to a value" input)
+      (input))))
+
 ;M-Value -> takes in env and a partial statement, ultimately resolves the partial statement down to a value and returns that value could be true, false, or a number
 (define M-Value
-  (lambda (env val)
+  (lambda (env val throw)
     (cond
       [(MV_NoProcessingNeeded val) val]
-      [(list? val) (M-Expression (MV_ConvertVarToVal* env val (MV_ListOfVars (flatten val))))] ;Evaluate the expression
+      [(and (list? val) (eq? (car val) 'funcall)) (M-Function env val throw)]
+      [(list? val) (M-Expression (MV_ConvertVarToVal* env val (MV_ListOfVars (flatten val)) throw))] ;Evaluate the expression
       [(custom-bool-literal? val) (ConvertToSchemeBool val)]
       [(IsVarUndeclared? env val) (error "Undeclared variable!" val)] ;undeclared variable
       [else (LookupValue env val)]))) ;declared variable that needs to be resolved to a value
-
-
 
 ;*******************************M_Expression Functions**************************
 
@@ -781,8 +929,7 @@
 
 
 
-
-
+(interpret "t.txt")
 ;Test Cases:
 ;
 ;(list '1 (eq? (interpret "t1.txt") 150))
