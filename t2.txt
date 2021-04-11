@@ -1,1 +1,6 @@
-return 6 * (8 + (5 % 3)) / 11 - 9;
+var x = 4;
+var y = 6 + x;
+
+function main() {
+  return x + y;
+}

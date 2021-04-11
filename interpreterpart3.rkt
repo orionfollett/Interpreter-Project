@@ -122,7 +122,9 @@
       
 (define FC_GetFuncBody
   (lambda (env name)
-    (car (cdr (LookupValue env name)))))
+    (if (eq? (LookupValue env name) 'null)
+        (error "non function trying to be called as a function: " env name)
+    (car (cdr (LookupValue env name))))))
 
 ;removes current layer, keeps global variables and function definitions adds formal params to neew layer in env and sets their value to be the arguments passed into the function
 (define FC_PrepEnv
@@ -133,63 +135,26 @@
       [else (FC_PrepEnv (AddNewBinding env (car fparams) (M-Value env (car args) throw)) (cdr fparams) (cdr args) throw)]
      )))
 
-;calls FC_UpdateEnv with correct paramters (because there couldve been a return value)
-;return format (return val env)
-(define FC_HandleFuncOutput
-  (lambda(env output)
-    (cond
-      [(null? output) env]
-      [(eq? (car output) 'return) (FC_UpdateEnv env (cdr(car (cdr (cdr output)))))]
-      [else  (FC_UpdateEnv env output)]
-    )))
-
-;'(() (x 1) (test ((p1 p2) ((return 1)))) (main (() ((var y (funcall test 1 2)) (return y)))))
-;'(((p1 1) (p2 2)) (x 1) (test ((p1 p2) ((return 1)))) (main (() ((var y (funcall test 1 2)) (return y)))))
-
-;'(() (x 1) (test ((p1 p2) ((var t 1) (return 1)))) (main (() ((var y (funcall test 1 2)) (return y)))))
-;'(((p1 1) (p2 2) (t 1)) (x 1) (test ((p1 p2) ((var t 1) (return 1)))) (main (() ((var y (funcall test 1 2)) (return y)))))
-
-;(HandleFuncall '(() (x 1) (test ((p1 p2) ((var t 1) (return 1)))) (main (() ((var y (funcall test 1 2)) (return y)))))
- ;             '(funcall test 1 2) #f #f #f #f)
-
-;adjusts global variables that changed, loops through changed and calls changebinding on env
-(define FC_UpdateEnv
-  (lambda(env changed)
-    ;(list env '() changed)
-    (cond
-      [(or (null? env) (null? changed)) env]
-      [(IsNewLayer? changed) (cons (FC_UpdateEnv env (car changed)) (FC_UpdateEnv env (cdr changed)))]
-      [else (ChangeBinding-Exists env (GetFirstBindingName changed) (GetFirstBindingValue changed))])))
-
-;HandleNormalCall returns an updated env based on function call
-(define FC_HandleNormalCall
+;FC_RunFunction calls stepthrough and all the prep functions
+(define FC_RunFunction
   (lambda (env statement return break continue throw)
      (call/cc (lambda (return-from-function)
       (CB_RemoveLayer (step-through-cc (FC_GetFuncBody env (FC_GetFuncName statement)) ;get function body
        (FC_PrepEnv (CB_AddLayer (CB_RemoveLayer env)) (FC_GetFormalParams env (FC_GetFuncName statement)) (FC_ResolveArgs env (FC_GetArgs statement) throw) throw) ; prepare env for function
         return-from-function STD_BREAK STD_CONT throw))))));pass in continuations
 
+;checks if it should return the value or the state
+(define FC_CheckReturn
+  (lambda(env return)
+    (if (list? return)
+    env
+    return)))
+
 ;HandleFuncall either returns an updated env or the return value depending on the return continuation
 (define HandleFuncall
   (lambda (env statement return break continue throw)
-    (if (eq? return 'M-F)
-        (FC_FormatMF (FC_HandleMFunctionCall env statement return break continue throw)) ; update env but return just a value
-        (FC_HandleFuncOutput env (FC_HandleNormalCall env statement return break continue throw))))) ; update env if global variables changes
-
-;format func call if it is being used for m value, if it returns an env then send null so that it can error
-(define FC_FormatMF
-  (lambda (output)
-    (if (list? output)
-        'null
-        output
-    )))
-
-;HandleMFunctionCall returns the return value of the function and changes global variables that could have changed
-(define FC_HandleMFunctionCall
-  (lambda (env statement return break continue throw)
-     (call/cc (lambda (return-from-function) (CB_RemoveLayer (step-through-cc (FC_GetFuncBody env (FC_GetFuncName statement)) ;get function body
-      (FC_PrepEnv (CB_AddLayer (CB_RemoveLayer env)) (FC_GetFormalParams env (FC_GetFuncName statement)) (FC_ResolveArgs env (FC_GetArgs statement) throw) throw) ; prepare env for function
-       return-from-function STD_BREAK STD_CONT throw))))));pass in continuations
+    ;(if (eq? return 'M-F)
+        (FC_CheckReturn env (FC_RunFunction env statement return break continue throw)))) ; update env if global variables changes
 
 ;****************************************Handle Code Block**********************************************
 
@@ -513,8 +478,8 @@
 (define HandleReturn
   (lambda (env statement return)
     ;(list (list 'return (M-Value env (R_GetReturn statement))))))
-    (return (list 'return (M-Value env (R_GetReturn statement) STD_THROW) env))))
-
+    ;(return (list 'return (M-Value env (R_GetReturn statement) STD_THROW) env))))
+    (return (M-Value env (R_GetReturn statement) STD_THROW))))
 ;****************************Variable Declaration Functions******************************************
 ;Variable declaration helper functions specific to variable declaration statements are marked VD_
 
@@ -585,6 +550,7 @@
   (lambda (env)
     (cond
       [(null? env) '()]
+      [(list? (car (cdr (GetFirstBinding env)))) (car (cdr (GetFirstBinding env)))]
       [else (unbox (car (cdr (GetFirstBinding env))))])))
 
 ;IsNameUnused -> takes in env and variable name, makes sure name is not in the list
@@ -722,8 +688,7 @@
 ;MV_IsBoolExpression - takes a val, returns true if it is an expression with bool operators
 (define MV_IsBoolExpression
   (lambda (val)
-    (and (list? val) (contains-bool-operator (flatten val)))
-    ))
+    (and (list? val) (contains-bool-operator (flatten val)))))
 
 (define M-Function
  (lambda(env func throw)
@@ -731,17 +696,35 @@
 
 (define M-FormatFunction
   (lambda(input)
-  (if (or (list? input) (eq? input 'null))
+  (if (or (eq? input 'null))
       (error "function did not resolve to a value" input)
-      (input))))
+      input)))
 
+;(+ (funcall fib 2 3) 1)
+;(HandleFuncDec '() '(function fib (x y) ((return (* x y)))) #f #f #f #f)
+
+
+;(MV-ResolveFunctions-First (HandleFuncDec '() '(function fib (x y) ((return (* x y)))) #f #f #f #f) '(+ (funcall fib 2 3) 1) #f)
+;shoudl return 
+;takes in expression and environment, keeps the expression the same except that the functions are resolved to values
+(define MV-ResolveFunctions-First
+  (lambda(env exp throw)
+    (cond
+      [(null? exp) '()]
+      [(and (list? (car exp)) (MV-IsFuncall? (car exp))) (cons (M-Function env (car exp) throw) (MV-ResolveFunctions-First env (cdr exp) throw))]
+      [(list? (car exp)) (cons (MV-ResolveFunctions-First env (car exp) throw) (MV-ResolveFunctions-First env (cdr exp) throw))]
+      [else (cons (car exp) (MV-ResolveFunctions-First env (cdr exp) throw))])))
+
+(define MV-IsFuncall?
+  (lambda(exp)
+    (eq? (car exp) 'funcall)))
 ;M-Value -> takes in env and a partial statement, ultimately resolves the partial statement down to a value and returns that value could be true, false, or a number
 (define M-Value
   (lambda (env val throw)
     (cond
       [(MV_NoProcessingNeeded val) val]
-      [(and (list? val) (eq? (car val) 'funcall)) (M-Function env val throw)]
-      [(list? val) (M-Expression (MV_ConvertVarToVal* env val (MV_ListOfVars (flatten val)) throw))] ;Evaluate the expression
+      [(and (list? val) (MV-IsFuncall? val)) (M-Function env val throw)]
+      [(list? val) (M-Expression (MV_ConvertVarToVal* env (MV-ResolveFunctions-First env val throw) (MV_ListOfVars (flatten (MV-ResolveFunctions-First env val throw))) throw))] ;Evaluate the expression
       [(custom-bool-literal? val) (ConvertToSchemeBool val)]
       [(IsVarUndeclared? env val) (error "Undeclared variable!" val)] ;undeclared variable
       [else (LookupValue env val)]))) ;declared variable that needs to be resolved to a value
@@ -932,11 +915,11 @@
 (interpret "t.txt")
 ;Test Cases:
 ;
-;(list '1 (eq? (interpret "t1.txt") 150))
-;(list '2 (eq? (interpret "t2.txt") -4))
-;(list '3 (eq? (interpret "t3.txt") 10))
-;(list '4 (eq? (interpret "t4.txt") 16))
-;(list '5 (eq? (interpret "t5.txt") 220))
+(list 't1 (eq? (interpret "t1.txt") 10))
+(list 't2 (eq? (interpret "t2.txt") 14))
+(list 't3 (eq? (interpret "t3.txt") 45))
+(list 't4 (eq? (interpret "t4.txt") 55))
+(list 't5 (eq? (interpret "t5.txt") 1))
 ;(list '6 (eq? (interpret "t6.txt") 5))
 ;(list '7 (eq? (interpret "t7.txt") 6))
 ;(list '8 (eq? (interpret "t8.txt") 10))
