@@ -73,11 +73,12 @@
 
 ;places the function definition in the current environment
 ;function definition is of the form: (funcname closure)
-;where closure is ((list of formal parameters) (body) (env))
+;where closure is ((list of formal parameters) (body) (env_func))
 (define HandleFuncDec
   (lambda(env statement return break continue throw)
     (AddFunctionDecToEnv env (FD_GetFuncName statement) (FD_GetFuncParam statement) (FD_GetFuncBody statement))
     ))
+
 
 (define FD_GetFuncName
   (lambda (statement)
@@ -117,8 +118,7 @@
   (lambda(env args throw)
     (cond
       [(null? args) args]
-      [else (cons (M-Value env (car args) throw) (FC_ResolveArgs env (cdr args) throw))]
-    )))
+      [else (cons (M-Value env (car args) throw) (FC_ResolveArgs env (cdr args) throw))])))
       
 (define FC_GetFuncBody
   (lambda (env name)
@@ -135,12 +135,19 @@
       [else (FC_PrepEnv (AddNewBinding env (car fparams) (M-Value env (car args) throw)) (cdr fparams) (cdr args) throw)]
      )))
 
+;(FC_PrepEnv (CB_AddLayer (FC_GetFuncEnvFunc (HandleFuncDec '() '(function f () ((return x))) #f #f #f #f) 'f)) '() '() #f)
+;(AddNewBinding (cons '() (AddNewBinding (AddNewBinding (cons '() (AddNewBinding '() 'y 2)) 'x 1) 'z 3)) 's 0)
+
+(define FC_GetFuncEnvFunc
+  (lambda (env name)
+    ((car (cdr (cdr (LookupValue env name)))) env)))
+
 ;FC_RunFunction calls stepthrough and all the prep functions
 (define FC_RunFunction
   (lambda (env statement return break continue throw)
      (call/cc (lambda (return-from-function)
       (CB_RemoveLayer (step-through-cc (FC_GetFuncBody env (FC_GetFuncName statement)) ;get function body
-       (FC_PrepEnv (CB_AddLayer (CB_RemoveLayer env)) (FC_GetFormalParams env (FC_GetFuncName statement)) (FC_ResolveArgs env (FC_GetArgs statement) throw) throw) ; prepare env for function
+       (FC_PrepEnv (CB_AddLayer (FC_GetFuncEnvFunc env (FC_GetFuncName statement))) (FC_GetFormalParams env (FC_GetFuncName statement)) (FC_ResolveArgs env (FC_GetArgs statement) throw) throw) ; prepare env for function
         return-from-function STD_BREAK STD_CONT throw))))));pass in continuations
 
 ;checks if it should return the value or the state
@@ -153,7 +160,6 @@
 ;HandleFuncall either returns an updated env or the return value depending on the return continuation
 (define HandleFuncall
   (lambda (env statement return break continue throw)
-    ;(if (eq? return 'M-F)
         (FC_CheckReturn env (FC_RunFunction env statement return break continue throw)))) ; update env if global variables changes
 
 ;****************************************Handle Code Block**********************************************
@@ -499,6 +505,7 @@
 (define HandleVarDec
   (lambda (env statement throw)
     (cond
+      [(and (IsNewLayer? env) (IsVarUndeclared? (GetFirstLayer env) (VD_GetVarName statement))) (AddNewBinding env (VD_GetVarName statement) (M-Value env (VD_GetVarValue statement) throw))]
       [(IsVarUndeclared? env (VD_GetVarName statement)) (AddNewBinding env (VD_GetVarName statement) (M-Value env (VD_GetVarValue statement) throw))]
       [else (error "Error: " (VD_GetVarName statement) "variable already declared")])))
     
@@ -522,6 +529,7 @@
 (define HandleAssign
   (lambda (env statement throw)
     (cond
+      [(and (IsNewLayer? env) (IsVarUndeclared? (GetFirstLayer env) (AS_GetVarName statement))) (ChangeBinding env (AS_GetVarName statement) (M-Value env (AS_GetVarVal statement) throw))]
       [(IsVarUndeclared? env (AS_GetVarName statement)) (error (AS_GetVarName statement) "Assignment before declaration!")]
       [else (ChangeBinding env (AS_GetVarName statement) (M-Value env (AS_GetVarVal statement) throw))])))
 
@@ -553,7 +561,7 @@
       [(list? (car (cdr (GetFirstBinding env)))) (car (cdr (GetFirstBinding env)))]
       [else (unbox (car (cdr (GetFirstBinding env))))])))
 
-;IsNameUnused -> takes in env and variable name, makes sure name is not in the list
+;IsVarUndeclared -> takes in env and variable name, makes sure name is not in the list
 (define IsVarUndeclared?
   (lambda (env name)
     (cond
@@ -561,6 +569,17 @@
       [(IsNewLayer? env) (and (IsVarUndeclared? (GetFirstLayer env) name) (IsVarUndeclared? (RemoveLayer env) name))]
       [(eq? (GetFirstBindingName env) name) #f]
       [else (IsVarUndeclared? (cdr env) name)])))
+
+;checks if var is undeclared only in the current scope
+;(define IsVarUndeclared?-InScope
+ ; (lambda(env name)
+  ;  (cond
+   ;   [(null? env) #t]
+    ;  [(IsNewLayer? env) (and(IsVarUndeclared? (GetFirstLayer env) name) (IsVarUndeclared? (RemoveLayer env) name))]
+    ;  [(eq? (GetFirstBindingName env) name) #f]
+    ;  [else (IsVarUndeclared? (cdr env) name)]
+    ;)))
+
 
 ;IsNewLayer? takes in env, returns true if it has a new layer on it, false otherwise
 (define IsNewLayer?
@@ -656,7 +675,21 @@
 
 (define AddFunctionDecToEnv
   (lambda(env funcname funcparams funcbody)
-    (AddNewBinding env funcname (list funcparams funcbody))))
+    (AddNewBinding env funcname (list funcparams funcbody (lambda(state) (GetFuncLayer funcname state))))))
+
+;(AddNewBinding (cons '() (AddNewBinding '() 'y 2)) 'x 1)
+;(AddNewBinding (cons '() (AddNewBinding (AddNewBinding (cons '() (AddNewBinding '() 'y 2)) 'x 1) 'z 3)) 's 0)
+
+;returns env where every layer that doesn't have the function is removed until the level of the function is reached
+(define GetFuncLayer
+  (lambda(funcname env)
+    (cond
+      [(null? env) (error "function not found")]
+      [(and (IsNewLayer? env) (not (IsVarUndeclared? (GetFirstLayer env) funcname))) env]
+      [(not (IsVarUndeclared? env funcname)) env]
+      [else (GetFuncLayer funcname (PopFirstBinding env))]
+    )))
+
 
 ;***********************************M-Value Helper Functions*****************************************
 
@@ -692,7 +725,7 @@
 
 (define M-Function
  (lambda(env func throw)
-   (M-FormatFunction (HandleFuncall env func 'M-F STD_BREAK STD_CONT throw))))
+   (M-FormatFunction (HandleFuncall env func #f STD_BREAK STD_CONT throw))))
 
 (define M-FormatFunction
   (lambda(input)
@@ -920,11 +953,11 @@
 (list 't3 (eq? (interpret "t3.txt") 45))
 (list 't4 (eq? (interpret "t4.txt") 55))
 (list 't5 (eq? (interpret "t5.txt") 1))
-;(list '6 (eq? (interpret "t6.txt") 5))
-;(list '7 (eq? (interpret "t7.txt") 6))
-;(list '8 (eq? (interpret "t8.txt") 10))
-;(list '9 (eq? (interpret "t9.txt") 5))
-;(list '10 (eq? (interpret "t10.txt") -39))
+(list 't6 (eq? (interpret "t6.txt") 115))
+(list 't7 (eq? (interpret "t7.txt") 'true))
+(list 't8 (eq? (interpret "t8.txt") 20))
+(list 't9 (eq? (interpret "t9.txt") 24))
+(list 't10 (eq? (interpret "t10.txt") 2))
 ;(eq? (interpret "t12.txt") ); should give error
 ;(eq? (interpret "t13.txt") ) ;should give error
 ;(eq? (interpret "t14.txt") ) ;should give error
