@@ -147,20 +147,21 @@
   (lambda (env statement return break continue throw)
      (call/cc (lambda (return-from-function)
       (CB_RemoveLayer (step-through-cc (FC_GetFuncBody env (FC_GetFuncName statement)) ;get function body
-       (FC_PrepEnv (CB_AddLayer (FC_GetFuncEnvFunc env (FC_GetFuncName statement))) (FC_GetFormalParams env (FC_GetFuncName statement)) (FC_ResolveArgs env (FC_GetArgs statement) throw) throw) ; prepare env for function
+       (FC_PrepEnv  (CB_AddLayer (CB_RemoveLayer (FC_GetFuncEnvFunc env (FC_GetFuncName statement)))) (FC_GetFormalParams env (FC_GetFuncName statement)) (FC_ResolveArgs env (FC_GetArgs statement) throw) throw) ; prepare env for function
         return-from-function STD_BREAK STD_CONT throw))))));pass in continuations
 
-;checks if it should return the value or the state
+;checks if it should return the value or the state based one whether return flag is set or if it is a continuation (uses this to tell where it was called from)
 (define FC_CheckReturn
-  (lambda(env return)
-    (if (list? return)
-    env
-    return)))
+  (lambda(env return-flag returnval)
+    (if (eq? return-flag 'val)
+    returnval
+    env)))
 
 ;HandleFuncall either returns an updated env or the return value depending on the return continuation
 (define HandleFuncall
   (lambda (env statement return break continue throw)
-        (FC_CheckReturn env (FC_RunFunction env statement return break continue throw)))) ; update env if global variables changes
+     ; update env if global variables changes
+        (FC_CheckReturn env return (FC_RunFunction env statement return break continue throw))))
 
 ;****************************************Handle Code Block**********************************************
 
@@ -507,7 +508,7 @@
     (cond
       [(and (IsNewLayer? env) (IsVarUndeclared? (GetFirstLayer env) (VD_GetVarName statement))) (AddNewBinding env (VD_GetVarName statement) (M-Value env (VD_GetVarValue statement) throw))]
       [(IsVarUndeclared? env (VD_GetVarName statement)) (AddNewBinding env (VD_GetVarName statement) (M-Value env (VD_GetVarValue statement) throw))]
-      [else (error "Error: " (VD_GetVarName statement) "variable already declared")])))
+      [else (error "Error: " statement "variable already declared")])))
     
 
 ;****************************Assignment Statement Functions******************************************
@@ -725,7 +726,7 @@
 
 (define M-Function
  (lambda(env func throw)
-   (M-FormatFunction (HandleFuncall env func #f STD_BREAK STD_CONT throw))))
+   (M-FormatFunction (HandleFuncall env func 'val STD_BREAK STD_CONT throw))))
 
 (define M-FormatFunction
   (lambda(input)
@@ -913,7 +914,7 @@
 ;var? -> returns true if x is not a keyword (true or false), operation, or number 
 (define var?
   (lambda (x)
-     (not (or (operation? x) (eq? x 'true)  (eq? x 'false) (number? x)))))    
+     (not (or (operation? x) (eq? x #t)  (eq? x #f) (number? x)))))    
 
 ;custom-bool-literal? -> takes an atom, returns #t if it is a valid bool literal
 (define custom-bool-literal?
@@ -945,7 +946,7 @@
 
 
 
-(interpret "t.txt")
+;(interpret "t.txt")
 ;Test Cases:
 ;
 (list 't1 (eq? (interpret "t1.txt") 10))
