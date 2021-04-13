@@ -23,6 +23,5 @@ function f(n) {
 function main() {
   var x = f(10);
   var y = f(20);
-
   return x - y;
 }

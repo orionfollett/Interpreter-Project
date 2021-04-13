@@ -515,8 +515,8 @@
 (define HandleVarDec
   (lambda (env statement throw)
     (cond
-      [(and (IsNewLayer? env) (IsVarUndeclared? (GetFirstLayer env) (VD_GetVarName statement))) (AddNewBinding env (VD_GetVarName statement) (M-Value env (VD_GetVarValue statement) throw))]
       [(IsVarUndeclared? env (VD_GetVarName statement)) (AddNewBinding env (VD_GetVarName statement) (M-Value env (VD_GetVarValue statement) throw))]
+      [(and (IsNewLayer? env) (IsVarUndeclared? (GetFirstLayer env) (VD_GetVarName statement))) (AddNewBinding env (VD_GetVarName statement) (M-Value env (VD_GetVarValue statement) throw))]
       [else (error "Error: " statement "variable already declared")])))
     
 
@@ -539,13 +539,22 @@
 (define HandleAssign
   (lambda (env statement throw)
     (cond
-      [(IsVarUndeclared? env (AS_GetVarName statement)) (error "var undeclared")]
+      [(IsVarUndeclared? env (AS_GetVarName statement)) (error "var undeclared" (AS_GetVarName statement))]
+     ; [(and (IsNewLayer? env) (not (IsVarUndeclared? (GetFirstLayer env) (AS_GetVarName statement)))) (ChangeBinding (GetFirstLayer env) (AS_GetVarName statement) (M-Value env (AS_GetVarVal statement) throw))]
       [else (ChangeBinding env (AS_GetVarName statement) (M-Value env (AS_GetVarVal statement) throw))])))
 
 ;*************************env Helper Functions**************************
 
 ;env format: '((return returnval)(x 0)(y 3)(varname value)...) contains all declared variables
 ;Updated env format -> '(((x 3)) (y 2) (d 3))can have nested bindings
+
+(define smart-box
+  (lambda(x)
+    (if (box? x) x (box x))))
+
+(define smart-unbox
+  (lambda(x)
+    (if (box? x) (unbox x) x)))
 
 ;GetFirstBinding -> takes in env, returns the first binding
 (define GetFirstBinding
@@ -567,7 +576,7 @@
     (cond
       [(null? env) '()]
       [(list? (car (cdr (GetFirstBinding env)))) (car (cdr (GetFirstBinding env)))]
-      [else (unbox (car (cdr (GetFirstBinding env))))])))
+      [else (smart-unbox (car (cdr (GetFirstBinding env))))])))
 
 ;IsVarUndeclared -> takes in env and variable name, makes sure name is not in the list
 (define IsVarUndeclared?
@@ -614,7 +623,7 @@
   (lambda (env varName varVal)
     (cond
       [(IsNewLayer? env) (cons (AddNewBinding (GetFirstLayer env) varName varVal) (RemoveLayer env))]
-      [else (append env (list (list varName (box varVal))))])))
+      [else (append env (list (list varName (smart-box varVal))))])))
 
 ;RemoveBinding -> takes in env, variable name returns env without that variable
 ;If the binding doesnt exist, env is unchanged
@@ -629,14 +638,15 @@
 ;PopFirstBinding - removes first binding
 (define PopFirstBinding
 (lambda (env)
-(cdr env)))
+(if (pair? env) (cdr env) env)))
 
 ;ChangeFirstBindingValue - takes in env and a value, changes the value of the first binding and returns the updated env
 ;assumes env has no layers and is not empty
 (define ChangeFirstBindingValue
   (lambda (env varVal)
-    ;(cons (list (GetFirstBindingName env) varVal) (PopFirstBinding env))))
-    (begin (set-box! (GetFirstBindingValueBox env) varVal) env)))
+    (if (box? (GetFirstBindingValueBox env))
+    (begin (set-box! (GetFirstBindingValueBox env) varVal) env)
+    (cons (list (GetFirstBindingName env) varVal) (PopFirstBinding env)))))
 
 ;GetFirstBindingValueBox -> takes in env, returns first variable value box of first binding
 (define GetFirstBindingValueBox
@@ -652,7 +662,7 @@
   (lambda (env varName varVal)
     (cond
       [(IsVarUndeclared? env varName) (AddNewBinding env varName varVal)]
-      [else (ChangeBinding-Exists env varName varVal)])))
+      [else (ChangeFirstBinding-Exists env varName varVal)])))
 
 ;changes the value of a binding, knowing that the binding exists
 (define ChangeBinding-Exists
@@ -663,6 +673,15 @@
      [(eq? (GetFirstBindingName env) varName) (ChangeFirstBindingValue env varVal)]
      [else (cons (GetFirstBinding env) (ChangeBinding-Exists (cdr env) varName varVal))])))
 
+;only changes the value of the first binding, knowing that the binding exists
+(define ChangeFirstBinding-Exists
+  (lambda (env varName varVal)
+    (cond
+     [(null? env) '()]
+     [(and (IsNewLayer? env) (IsVarUndeclared? (GetFirstLayer env) varName)) (cons (GetFirstLayer env) (ChangeBinding-Exists (RemoveLayer env) varName varVal))]
+     [(IsNewLayer? env) (cons (ChangeBinding-Exists (GetFirstLayer env) varName varVal) (RemoveLayer env))]
+     [(eq? (GetFirstBindingName env) varName) (ChangeFirstBindingValue env varVal)]
+     [else (cons (GetFirstBinding env) (ChangeBinding-Exists (cdr env) varName varVal))])))
 ;takes in two atoms, returns null if they are both null, or the value of the one that is not null
 (define ResolveMultiLayerSearch
   (lambda(a1 a2)
@@ -951,7 +970,7 @@
       [else (error "Value that is not a bool trying to be converted into a bool!")])))
 
 
-(interpret "t20.txt")
+;(interpret "t15.txt")
 ;Test Cases:
 ;
 (list 't1 (eq? (interpret "t1.txt") 10))
@@ -976,3 +995,4 @@
 (list 't20 (eq? (interpret "t20.txt") 2000400)) 
 ; t20 gives an error because the throw continuation throws the M-State from the inside of the function, so a variable is lost and an extra variable is there
 
+;

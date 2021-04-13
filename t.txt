@@ -1,6 +1,8 @@
+
+
 function g(x)
 {
-	throw x;
+	
 }
   
 function main()
