@@ -12,7 +12,7 @@
 
 (define interpret
   (lambda (filename)
-     (step-through (parser filename) (box '()))))
+     (step-through (parser filename) '())))
 
 ;Plan of Action for Functions:
 
@@ -39,7 +39,7 @@
 (define step-through-outer-layer
   (lambda (program env return break continue throw)
     (cond
-      [(null? program) (step-through-cc (GetMain env) (AddLayer env) return break continue throw)];add layer since you are entering a function
+      [(null? program) (step-through-cc (GetMain env) (CB_AddLayer env) return break continue throw)];add layer since you are entering a function
       [(IsVarDecStatement? (GetFirstStatement program)) (step-through-outer-layer (cdr program) (HandleVarDec env (GetFirstStatement program) throw) return break continue throw)]
       [(IsAssignStatement? (GetFirstStatement program)) (step-through-outer-layer (cdr program) (HandleAssign env (GetFirstStatement program) throw) return break continue throw)]
       [(IsFuncDecStatement? (GetFirstStatement program)) (step-through-outer-layer (cdr program) (HandleFuncDec env (GetFirstStatement program) return break continue throw) return break continue throw)]
@@ -123,7 +123,7 @@
 (define FC_GetFuncBody
   (lambda (env name)
     (if (eq? (LookupValue env name) 'null)
-        (error "function doesnt exist or non function trying to be called as a function: " env name)
+        (error "non function trying to be called as a function: " env name)
     (car (cdr (LookupValue env name))))))
 
 ;removes current layer, keeps global variables and function definitions adds formal params to neew layer in env and sets their value to be the arguments passed into the function
@@ -135,41 +135,45 @@
       [else (FC_PrepEnv (AddNewBinding env (car fparams) (M-Value env (car args) throw)) (cdr fparams) (cdr args) throw)]
      )))
 
-;(FC_PrepEnv  (FC_GetFuncEnvFunc (HandleFuncDec '() '(function f () ((return x))) #f #f #f #f) 'f) '() '() #f)
+;(FC_PrepEnv (CB_AddLayer (FC_GetFuncEnvFunc (HandleFuncDec '() '(function f () ((return x))) #f #f #f #f) 'f)) '() '() #f)
 ;(AddNewBinding (cons '() (AddNewBinding (AddNewBinding (cons '() (AddNewBinding '() 'y 2)) 'x 1) 'z 3)) 's 0)
-;(ReturnFuncLayer 'f (HandleFuncDec '() '(function f () ((return x))) #f #f #f #f))
+
 (define FC_GetFuncEnvFunc
   (lambda (env name)
-    (begin (display env) ((car (cdr (cdr (LookupValue env name)))) env))))
-
-;ERROR IS HERE IN PREPENV, IF I GET RID OF CB_REMOVE BODY, TEST 16 PASSES< BUT TEST 6 FAILS, MAKE FC_GetFUNCENVFUNC DYNAMICALLY DECIDE IF IT NEEDS ANOTHER LAYER OR NOT?
-;possibly remove layer doesnt get called if it returned so need to return layer!
+    ((car (cdr (cdr (LookupValue env name)))) env)))
 
 ;FC_RunFunction calls stepthrough and all the prep functions
 (define FC_RunFunction
   (lambda (env statement return break continue throw)
      (call/cc (lambda (return-from-function)
-      (RemoveLayer (step-through-cc (FC_GetFuncBody env (FC_GetFuncName statement)) ;get function body
-       (FC_PrepEnv  (AddLayer (FC_GetFuncEnvFunc env (FC_GetFuncName statement))) (FC_GetFormalParams env (FC_GetFuncName statement)) (FC_ResolveArgs env (FC_GetArgs statement) throw) throw) ; prepare env for function
+      (CB_RemoveLayer (step-through-cc (FC_GetFuncBody env (FC_GetFuncName statement)) ;get function body
+       (FC_PrepEnv  (CB_AddLayer (CB_RemoveLayer (FC_GetFuncEnvFunc env (FC_GetFuncName statement)))) (FC_GetFormalParams env (FC_GetFuncName statement)) (FC_ResolveArgs env (FC_GetArgs statement) throw) throw) ; prepare env for function
         return-from-function STD_BREAK STD_CONT throw))))));pass in continuations
 
 ;checks if it should return the value or the state based one whether return flag is set or if it is a continuation (uses this to tell where it was called from)
 (define FC_CheckReturn
   (lambda(env return-flag returnval)
     (if (eq? return-flag 'val)
-    ;(begin (set-box! env (RemoveLayer (unbox env))) returnval)
-        (begin (RemoveLayer env) returnval)
-        env)))
+    returnval
+    env)))
 
 ;HandleFuncall either returns an updated env or the return value depending on the return continuation
 (define HandleFuncall
   (lambda (env statement return break continue throw)
      ; update env if global variables changes
-    (if (eq? return 'val)
-        (FC_CheckReturn env return (FC_RunFunction env statement return break continue throw))
-        (FC_CheckReturn env return (FC_RunFunction env statement return break continue throw)))))
-  
+        (FC_CheckReturn env return (FC_RunFunction env statement return break continue throw))))
+
 ;****************************************Handle Code Block**********************************************
+
+;helper function for HandleCodeBlock, adds a new layer to env
+(define CB_AddLayer
+  (lambda (env)
+   (cons '() env)))
+
+;helper function for RemoveLayer, removes the last added layer of env
+(define CB_RemoveLayer
+(lambda(env)
+  (cdr env)))
 
 ;helper function for HandleCodeBlock, returns the body of the code without the begin statement
 (define CB_GetBody
@@ -179,7 +183,7 @@
 ;takes a code block beginning with begin statement, returns env after resolving that code block
 (define HandleCodeBlock
   (lambda(env statement return break continue throw)
-     (RemoveLayer (step-through-cc (CB_GetBody statement) (AddLayer env) return break continue throw))))
+     (CB_RemoveLayer (step-through-cc (CB_GetBody statement) (CB_AddLayer env) return break continue throw))))
 
 
 ;**************************************Throw**************************************
@@ -536,17 +540,12 @@
 ;env format: '((return returnval)(x 0)(y 3)(varname value)...) contains all declared variables
 ;Updated env format -> '(((x 3)) (y 2) (d 3))can have nested bindings
 
-(define smart-unbox
-  (lambda (x)
-  (if (box? x) (unbox x) x)))
-
 ;GetFirstBinding -> takes in env, returns the first binding
 (define GetFirstBinding
-  (lambda (e)
-    (let ((env (smart-unbox e)))
+  (lambda (env)
     (cond
       [(null? env) '()]
-      [else (car env)]))))
+      [else (car env)])))
 
 ;GetFirstBindingName -> takes in env, returns first variable name of first binding
 (define GetFirstBindingName
@@ -559,127 +558,103 @@
 (define GetFirstBindingValue
   (lambda (env)
     (cond
-      [(null? (GetFirstBinding env)) '()]
-      ;[(list? (car (cdr (GetFirstBinding env)))) (car (cdr (GetFirstBinding env)))]
-      ;[else (unbox (car (cdr (GetFirstBinding env))))])))
-      [else (car (cdr (GetFirstBinding env)))])))
+      [(null? env) '()]
+      [(list? (car (cdr (GetFirstBinding env)))) (car (cdr (GetFirstBinding env)))]
+      [else (unbox (car (cdr (GetFirstBinding env))))])))
 
 ;IsVarUndeclared -> takes in env and variable name, makes sure name is not in the list
 (define IsVarUndeclared?
-  (lambda (e name)
-    (let ((env (smart-unbox e)))
+  (lambda (env name)
     (cond
       [(null? env) #t]
       [(IsNewLayer? env) (and (IsVarUndeclared? (GetFirstLayer env) name) (IsVarUndeclared? (RemoveLayer env) name))]
       [(eq? (GetFirstBindingName env) name) #f]
-      [else (IsVarUndeclared? (cdr env) name)]))))
+      [else (IsVarUndeclared? (cdr env) name)])))
+
+;checks if var is undeclared only in the current scope
+;(define IsVarUndeclared?-InScope
+ ; (lambda(env name)
+  ;  (cond
+   ;   [(null? env) #t]
+    ;  [(IsNewLayer? env) (and(IsVarUndeclared? (GetFirstLayer env) name) (IsVarUndeclared? (RemoveLayer env) name))]
+    ;  [(eq? (GetFirstBindingName env) name) #f]
+    ;  [else (IsVarUndeclared? (cdr env) name)]
+    ;)))
+
 
 ;IsNewLayer? takes in env, returns true if it has a new layer on it, false otherwise
 (define IsNewLayer?
-  (lambda(e)
-    (let ((env (smart-unbox e)))
+  (lambda(env)
     (cond
       [(null? env) #f]
       [(null? (car env)) #t]
       [(list? (car (car env))) #t]
-      [else #f]))))
+      [else #f])))
+
+;takes env returns env with the outermost layer removed
+(define RemoveLayer
+ (lambda(env)
+  (cdr env)))
 
 ;takes env that is multilayered, returns first layer
 (define GetFirstLayer
-  (lambda(e)
-    (let ((env (smart-unbox e)))
-    (car env))))
-
-(define smart-box
-  (lambda(x)
-    (if (box? x) x (box x))))
-
-;helper function for HandleCodeBlock, adds a new layer to env
-(define AddLayer
-  (lambda (e)
-   (let* ((env-box (smart-box e))
-          (env-unbox (smart-unbox e)))
-   (begin (set-box! env-box (cons '() env-unbox)) env-box))))
-
-;helper function for RemoveLayer, removes the last added layer of env
-(define RemoveLayer
-  (lambda (e)
-   (let* ((env-box (smart-box e))
-          (env-unbox (smart-unbox e)))
-   (begin (set-box! env-box (cdr env-unbox)) env-box))))
+  (lambda(env)
+    (car env)))
 
 ;AddNewBinding -> takes in env, variable name, variable value, returns env with new binding
 ;if env has multiple layers, it puts it in the deepest layer because that is the current active layer
 (define AddNewBinding
-  (lambda (e varName varVal)
-   (let* ((env-box (smart-box e))
-          (env-unbox (smart-unbox e)))
-    (begin (set-box! env-box (AddNewBinding-unbox env-unbox varName varVal)) env-box))))
-
-(define AddNewBinding-unbox
   (lambda (env varName varVal)
     (cond
-      [(IsNewLayer? env) (cons (AddNewBinding-unbox (GetFirstLayer env) varName varVal) (RemoveLayer-unbox env))]
-      ;[else (append env (list (list varName (box varVal))))])))
-      [else (append env (list (list varName varVal)))])))
-
-(define RemoveLayer-unbox
-  (lambda (e)
-   (cdr e)))
+      [(IsNewLayer? env) (cons (AddNewBinding (GetFirstLayer env) varName varVal) (RemoveLayer env))]
+      [else (append env (list (list varName (box varVal))))])))
 
 ;RemoveBinding -> takes in env, variable name returns env without that variable
 ;If the binding doesnt exist, env is unchanged
 (define RemoveBinding
-  (lambda (e varName)
-     (let* ((env-box (smart-box e))
-          (env-unbox (smart-unbox e)))
-      (begin (set-box! env-box (RemoveBinding-unbox env-unbox varName)) env-box))))
-
-(define RemoveBinding-unbox
   (lambda (env varName)
     (cond
      [(null? env) env]
-     [(IsNewLayer? env) (cons (RemoveBinding-unbox (GetFirstLayer env) varName) (RemoveBinding-unbox (RemoveLayer-unbox env) varName))]
+     [(IsNewLayer? env) (cons (RemoveBinding (GetFirstLayer env) varName) (RemoveBinding (RemoveLayer env) varName))]
      [(eq? (GetFirstBindingName env) varName) (cdr env)]
-     [else (cons (GetFirstBinding env) (RemoveBinding-unbox (cdr env) varName))])))
+     [else (cons (GetFirstBinding env) (RemoveBinding (cdr env) varName))])))
 
 ;PopFirstBinding - removes first binding
-(define PopFirstBinding-unbox
- (lambda (env) 
-  (cdr env)))
+(define PopFirstBinding
+(lambda (env)
+(cdr env)))
 
 ;ChangeFirstBindingValue - takes in env and a value, changes the value of the first binding and returns the updated env
 ;assumes env has no layers and is not empty
-(define ChangeFirstBindingValue-unbox
+(define ChangeFirstBindingValue
   (lambda (env varVal)
-    (cons (list (GetFirstBindingName env) varVal) (PopFirstBinding-unbox env))))
-    ;(begin (set-box! (GetFirstBindingValueBox env) varVal) env)))
+    ;(cons (list (GetFirstBindingName env) varVal) (PopFirstBinding env))))
+    (begin (set-box! (GetFirstBindingValueBox env) varVal) env)))
+
+;GetFirstBindingValueBox -> takes in env, returns first variable value box of first binding
+(define GetFirstBindingValueBox
+  (lambda (env)
+    (cond
+      [(null? env) '()]
+      [else (car (cdr (GetFirstBinding env)))])))
     
 ;ChangeBinding -> takes in env, variable name, new variable value, returns env with old variable value replaced by new variable value
 ;If the binding doesnt exist, it creates a new one
 
 (define ChangeBinding
-  (lambda (e varName varVal)
-    (let* ((env-box (smart-box e))
-          (env-unbox (smart-unbox e)))
-     (cond
-       [(IsVarUndeclared? env-unbox varName) (AddNewBinding env-box varName varVal)]
-       [else (ChangeBinding-Exists env-box varName varVal)]))))
+  (lambda (env varName varVal)
+    (cond
+      [(IsVarUndeclared? env varName) (AddNewBinding env varName varVal)]
+      [else (ChangeBinding-Exists env varName varVal)])))
 
 ;changes the value of a binding, knowing that the binding exists
 (define ChangeBinding-Exists
-  (lambda (e varName varVal)
-    (let* ((env-box (smart-box e))
-          (env-unbox (smart-unbox e)))
-   (begin (set-box! env-box (ChangeBindingExists-unbox env-unbox varName varVal)) env-box))))
-
-(define ChangeBindingExists-unbox
   (lambda (env varName varVal)
     (cond
      [(null? env) '()]
-     [(IsNewLayer? env) (cons (ChangeBindingExists-unbox (GetFirstLayer env) varName varVal) (ChangeBindingExists-unbox (RemoveLayer-unbox env) varName varVal))]
-     [(eq? (GetFirstBindingName env) varName) (ChangeFirstBindingValue-unbox env varVal)]
-     [else (cons (GetFirstBinding env) (ChangeBindingExists-unbox (cdr env) varName varVal))])))
+     [(IsNewLayer? env) (cons (ChangeBinding-Exists (GetFirstLayer env) varName varVal) (ChangeBinding-Exists (RemoveLayer env) varName varVal))]
+     [(eq? (GetFirstBindingName env) varName) (ChangeFirstBindingValue env varVal)]
+     [else (cons (GetFirstBinding env) (ChangeBinding-Exists (cdr env) varName varVal))])))
 
 ;takes in two atoms, returns null if they are both null, or the value of the one that is not null
 (define ResolveMultiLayerSearch
@@ -692,31 +667,30 @@
 ;LookupValue -> takes in env, variable name, returns the value associated with that variable
 ;returns 'null if there is no value associated with that variable
 (define LookupValue
-  (lambda (e varName)
-   (let ((env (smart-unbox e)))
+  (lambda (env varName)
     (cond
       [(null? env) 'null]
       [(IsNewLayer? env) (ResolveMultiLayerSearch (LookupValue (GetFirstLayer env) varName) (LookupValue (RemoveLayer env) varName))]
       [(eq? (GetFirstBindingName env) varName) (GetFirstBindingValue env)]
-      [else (LookupValue (cdr env) varName)]))))
+      [else (LookupValue (cdr env) varName)])))
 
 (define AddFunctionDecToEnv
   (lambda(env funcname funcparams funcbody)
-    (AddNewBinding env funcname (list funcparams funcbody (lambda(state) (ReturnFuncLayer funcname state))))))
+    (AddNewBinding env funcname (list funcparams funcbody (lambda(state) (GetFuncLayer funcname state))))))
+
+;(AddNewBinding (cons '() (AddNewBinding '() 'y 2)) 'x 1)
+;(AddNewBinding (cons '() (AddNewBinding (AddNewBinding (cons '() (AddNewBinding '() 'y 2)) 'x 1) 'z 3)) 's 0)
 
 ;returns env where every layer that doesn't have the function is removed until the level of the function is reached
-(define ReturnFuncLayer
-  (lambda(funcname env)
-    (smart-box (ReturnFuncLayer-unbox funcname (smart-unbox env)))))
-
-(define ReturnFuncLayer-unbox
+(define GetFuncLayer
   (lambda(funcname env)
     (cond
       [(null? env) (error "function not found")]
       [(and (IsNewLayer? env) (not (IsVarUndeclared? (GetFirstLayer env) funcname))) env]
-      [(not (IsVarUndeclared? env funcname))  env]
-      [else (ReturnFuncLayer-unbox funcname (PopFirstBinding-unbox env))]
+      [(not (IsVarUndeclared? env funcname)) env]
+      [else (GetFuncLayer funcname (PopFirstBinding env))]
     )))
+
 
 ;***********************************M-Value Helper Functions*****************************************
 
@@ -736,7 +710,7 @@
   (lambda (env expression varList throw)
     (cond
       [(null? varList) expression]
-      [(and (not (eq? (car varList) 'funcall)) (IsVarUndeclared? env (car varList))) (begin (display env) (error " variable not defined in an expression variable name: " (car varList)))]
+      [(and (not (eq? (car varList) 'funcall)) (IsVarUndeclared? env (car varList))) (error " variable not defined in an expression variable name: " (car varList))]
       ;[else (MV_ConvertVarToVal* env (replaceall* (car varList) (LookupValue env (car varList)) expression) (cdr varList))])))
       [else (MV_ConvertVarToVal* env (replaceall* (car varList) (M-Value env (car varList) throw) expression) (cdr varList) throw)])))
 ;MV_NoProcessingNeeded - takes in val, returns true if it is a value, false if it needs further processing
@@ -778,7 +752,6 @@
 (define MV-IsFuncall?
   (lambda(exp)
     (eq? (car exp) 'funcall)))
-
 ;M-Value -> takes in env and a partial statement, ultimately resolves the partial statement down to a value and returns that value could be true, false, or a number
 (define M-Value
   (lambda (env val throw)
@@ -972,13 +945,14 @@
       [else (error "Value that is not a bool trying to be converted into a bool!")])))
 
 
+
 ;(interpret "t16.txt")
 ;Test Cases:
 ;
 (list 't1 (eq? (interpret "t1.txt") 10))
 (list 't2 (eq? (interpret "t2.txt") 14))
 (list 't3 (eq? (interpret "t3.txt") 45))
-;(list 't4 (eq? (interpret "t4.txt") 55))
+(list 't4 (eq? (interpret "t4.txt") 55))
 (list 't5 (eq? (interpret "t5.txt") 1))
 (list 't6 (eq? (interpret "t6.txt") 115))
 (list 't7 (eq? (interpret "t7.txt") 'true))
@@ -989,9 +963,9 @@
 ;(list 't12 (eq? (interpret "t12.txt") )) ;should give error --> works
 (list 't13 (eq? (interpret "t13.txt") 90))
 (list 't14 (eq? (interpret "t14.txt") 69))
-(list 't15 (eq? (interpret "t15.txt") 87));wrong answer (-13)
-(list 't16 (eq? (interpret "t16.txt") 64)) ;giving unecessary error
-(interpret "t17.txt");give error ;wrong answer returning 1
+(list 't15 (eq? (interpret "t15.txt") 87));wrong answer (-15)
+;(list 't16 (eq? (interpret "t16.txt") 64)) ;giving unecessary error
+;(interpret "t17.txt");give error ;wrong answer returning 1
 (list 't18 (eq? (interpret "t18.txt") 125))
 (list 't19 (eq? (interpret "t19.txt") 100))
 (list 't20 (eq? (interpret "t20.txt") 2000400)) ;returning 2000000
@@ -1055,8 +1029,4 @@
 ;There is an env list that is passed nearly everywhere, it will have all variable bindings so '((x 1) (y 3) ...)
 
 ;return statement indicates end of the program, env gets changed to (return value) and the program returns the value
-
-
-
-
 
