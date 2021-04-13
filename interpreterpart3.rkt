@@ -533,10 +533,8 @@
 (define HandleAssign
   (lambda (env statement throw)
     (cond
-      [(and (IsNewLayer? env) (IsVarUndeclared? (GetFirstLayer env) (AS_GetVarName statement))) (ChangeBinding env (AS_GetVarName statement) (M-Value env (AS_GetVarVal statement) throw))]
-      [(IsVarUndeclared? env (AS_GetVarName statement)) (error (AS_GetVarName statement) "Assignment before declaration!")]
+      [(IsVarUndeclared? env (AS_GetVarName statement)) (error "var undeclared")]
       [else (ChangeBinding env (AS_GetVarName statement) (M-Value env (AS_GetVarVal statement) throw))])))
-
 
 ;*************************env Helper Functions**************************
 
@@ -947,8 +945,7 @@
       [else (error "Value that is not a bool trying to be converted into a bool!")])))
 
 
-
-;(interpret "t16.txt")
+;(interpret "t17.txt")
 ;Test Cases:
 ;
 (list 't1 (eq? (interpret "t1.txt") 10))
@@ -967,68 +964,8 @@
 (list 't14 (eq? (interpret "t14.txt") 69))
 (list 't15 (eq? (interpret "t15.txt") 87));wrong answer (-15)
 (list 't16 (eq? (interpret "t16.txt") 64)) ;giving unecessary error
-(interpret "t17.txt");give error ;wrong answer returning 1
+;(interpret "t17.txt");give error ;wrong answer returning 1
 (list 't18 (eq? (interpret "t18.txt") 125))
 (list 't19 (eq? (interpret "t19.txt") 100))
 (list 't20 (eq? (interpret "t20.txt") 2000400)) ;returning 2000000
-
-;(eq? (interpret "t12.txt") ); should give error
-;(eq? (interpret "t13.txt") ) ;should give error
-;(eq? (interpret "t14.txt") ) ;should give error
-;(eq? (interpret "t15.txt") ) ;should give error
-;(list '12 (eq? (interpret "t16.txt") 100))
-;(list '13 (eq? (interpret "t17.txt") 'false))
-;(list '14 (eq? (interpret "t18.txt") 'true))
-;(list '15 (eq? (interpret "t19.txt") 128))
-;(list '16 (eq? (interpret "t20.txt") 12))
-;(list '17 (eq? (interpret "t21.txt") 20))
-;(list '18 (eq? (interpret "t22.txt") 164))
-;(list '19 (eq? (interpret "t23.txt") 32))
-;(list '20 (eq? (interpret "t24.txt") 2))
-;(eq? (interpret "t25.txt") ) ;should give error
-;(list '21 (eq? (interpret "t26.txt") 25))
-;(list '22 (eq? (interpret "t27.txt") 21))
-;(list '23 (eq? (interpret "t28.txt") 6))
-;(list '24 (eq? (interpret "t29.txt") -1))
-;(list '25 (eq? (interpret "t30.txt") 789))
-;(eq? (interpret "t31.txt") ) ; should return error
-;(eq? (interpret "t32.txt") ) ; should return error
-;(eq? (interpret "t33.txt") ) ; should return error
-;(list '26 (eq? (interpret "t34.txt") 12 )) ;
-;(list '27 (eq? (interpret "t35.txt") 125))
-;(list '28 (eq? (interpret "t36.txt") 110))
-;(list '29 (eq? (interpret "t37.txt") 2000400)) ; not working
-;(list '30 (eq? (interpret "t38.txt") 101))
-;(eq? (interpret "t39.txt")) ; should return error
-;(list '31 (eq? (interpret "t40.txt") 9)) ; 
-;(list '32 (eq? (interpret "t41.txt") 5)) ;
-
-
-;Part 2 General Idea/ List of Features
-;2. break, continue, throw
-;3. try catch finally 
-;
-;For scoping, env will now be a more nested list, '(((f 5) (h 6)) (d 4) (y 2) (x 1))
-;when a code block begins, start a new layer in env by consing an empty list onto env, '(() (x 3) (r 4) (e 5))
-;when a code block ends, pop off layer that corresponds to that code block by removing the car of Mstate
-;this means that the order of env will matter
-;task 1 is to modify env functions to account for these changes.
-;Takse  1.1 modify add and remove binding to work for multilayered things
-;task 2 is write handle code block to add a layer at the beginning and remove a layer at the end
-
-;Part 1 General Idea:
-;parser filename gives a list where each sublist is a statement
-;there are five different types of statements
-
-;variable declaration	(var variable) or (var variable value)
-;assignment	(= variable expression)
-;return	(return expression)
-;if statement	(if conditional then-statement optional-else-statement)
-;while statement	(while conditional body-statement)
-
-;interpret will step through each statement, execute what needs to get done based on that line, and then interpret the rest of the code
-
-;There is an env list that is passed nearly everywhere, it will have all variable bindings so '((x 1) (y 3) ...)
-
-;return statement indicates end of the program, env gets changed to (return value) and the program returns the value
 
