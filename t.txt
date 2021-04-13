@@ -1,8 +1,8 @@
 
-
+var a = 0;
 function g(x)
 {
-	
+	var a = 	
 }
   
 function main()

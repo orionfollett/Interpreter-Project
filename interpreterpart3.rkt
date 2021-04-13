@@ -14,18 +14,6 @@
   (lambda (filename)
      (step-through (parser filename) '())))
 
-;Plan of Action for Functions:
-
-;1. change large scale things, only variable and function declaration and assignment statements outside of functions, analyze everything then run main
-;2. change env and all that to work for global variable, function definitions and to set up environments
-;3. add function calls and make sure they work with global and local variables, the flow will be: set up environment and map formal parameter, run the function, return whatever is returned
-
-
-
-;notes on how to make functions:
-; functions by default will not return anything, but a return continuation will just be called if it happens to return something
-;in env, functions needs to have the following information: name of function and closure, (where closure is formal parameters, body of function, and a function to make the environment)
-
 ;**************************************MAIN STEP THROUGH LOOP******************************************
 
 ;step-through takes program: the parsed program, env: a list of bindings
@@ -78,7 +66,6 @@
   (lambda(env statement return break continue throw)
     (AddFunctionDecToEnv env (FD_GetFuncName statement) (FD_GetFuncParam statement) (FD_GetFuncBody statement))
     ))
-
 
 (define FD_GetFuncName
   (lambda (statement)
@@ -135,24 +122,17 @@
       [else (FC_PrepEnv (AddNewBinding env (car fparams) (M-Value env (car args) throw)) (cdr fparams) (cdr args) throw)]
      )))
 
-;(FC_PrepEnv (CB_AddLayer (FC_GetFuncEnvFunc (HandleFuncDec '() '(function f () ((return x))) #f #f #f #f) 'f)) '() '() #f)
-;(AddNewBinding (cons '() (AddNewBinding (AddNewBinding (cons '() (AddNewBinding '() 'y 2)) 'x 1) 'z 3)) 's 0)
-
 (define FC_GetFuncEnvFunc
   (lambda (env name)
     (CB_AddLayer ((car (cdr (cdr (LookupValue env name)))) env))))
-    ;(car (cdr (cdr (LookupValue env name))))))
 
 ;FC_RunFunction calls stepthrough and all the prep functions
 (define FC_RunFunction
   (lambda (env statement return break continue throw)
      (call/cc (lambda (return-from-function)
-      ;(CB_RemoveLayer
        (step-through-cc (FC_GetFuncBody env (FC_GetFuncName statement)) ;get function body
-       ;(begin (display (FC_PrepEnv  (CB_AddLayer (CB_RemoveLayer (FC_GetFuncEnvFunc env (FC_GetFuncName statement)))) (FC_GetFormalParams env (FC_GetFuncName statement)) (FC_ResolveArgs env (FC_GetArgs statement) throw) throw) ; prepare env for function
-                      ; )
         (FC_PrepEnv  (FC_GetFuncEnvFunc env (FC_GetFuncName statement)) (FC_GetFormalParams env (FC_GetFuncName statement)) (FC_ResolveArgs env (FC_GetArgs statement) throw) throw) ; prepare env for function
-                       return-from-function STD_BREAK STD_CONT return-from-function)))));pass in continuations
+         return-from-function STD_BREAK STD_CONT return-from-function)))));pass in continuations
 
 ;checks if it should return the value or the state based one whether return flag is set or if it is a continuation (uses this to tell where it was called from)
 (define FC_CheckReturn
@@ -160,8 +140,7 @@
     (cond
       [(TC_GotThrown? returnval) (HandleThrow env (list 'throw (Throw_GetValue returnval)) throw)]
       [(eq? return-flag 'val) returnval]
-      [else env]
-    )))
+      [else env])))
 
 ;HandleFuncall either returns an updated env or the return value depending on the return continuation
 (define HandleFuncall
@@ -191,7 +170,6 @@
   (lambda(env statement return break continue throw)
      (CB_RemoveLayer (step-through-cc (CB_GetBody statement) (CB_AddLayer env) return break continue throw))))
 
-
 ;**************************************Throw**************************************
 
 ;gets expression part of statement after throw keyword
@@ -202,9 +180,7 @@
 ;calls throw continuation sending current env and thrown value packaged together 
 (define HandleThrow
   (lambda(env statement throw)
-    ;(if (list? throw)
-      ;((car throw) (list (M-Value env (T_GetBody statement) throw) (car (cdr env))))
-      (throw (list (M-Value env (T_GetBody statement) throw) env))))
+    (throw (list (M-Value env (T_GetBody statement) throw) env))))
 
  ;global helper function to get thrown value from throw continuation return
  (define Throw_GetValue
@@ -493,8 +469,6 @@
 ;HandleReturn -> returns the return statement in proper form:  (return returnval env)
 (define HandleReturn
   (lambda (env statement return)
-    ;(list (list 'return (M-Value env (R_GetReturn statement))))))
-    ;(return (list 'return (M-Value env (R_GetReturn statement) STD_THROW) env))))
     (return (M-Value env (R_GetReturn statement) STD_THROW))))
 ;****************************Variable Declaration Functions******************************************
 ;Variable declaration helper functions specific to variable declaration statements are marked VD_
@@ -540,7 +514,6 @@
   (lambda (env statement throw)
     (cond
       [(IsVarUndeclared? env (AS_GetVarName statement)) (error "var undeclared" (AS_GetVarName statement))]
-     ; [(and (IsNewLayer? env) (not (IsVarUndeclared? (GetFirstLayer env) (AS_GetVarName statement)))) (ChangeBinding (GetFirstLayer env) (AS_GetVarName statement) (M-Value env (AS_GetVarVal statement) throw))]
       [else (ChangeBinding env (AS_GetVarName statement) (M-Value env (AS_GetVarVal statement) throw))])))
 
 ;*************************env Helper Functions**************************
@@ -586,17 +559,6 @@
       [(IsNewLayer? env) (and (IsVarUndeclared? (GetFirstLayer env) name) (IsVarUndeclared? (RemoveLayer env) name))]
       [(eq? (GetFirstBindingName env) name) #f]
       [else (IsVarUndeclared? (cdr env) name)])))
-
-;checks if var is undeclared only in the current scope
-;(define IsVarUndeclared?-InScope
- ; (lambda(env name)
-  ;  (cond
-   ;   [(null? env) #t]
-    ;  [(IsNewLayer? env) (and(IsVarUndeclared? (GetFirstLayer env) name) (IsVarUndeclared? (RemoveLayer env) name))]
-    ;  [(eq? (GetFirstBindingName env) name) #f]
-    ;  [else (IsVarUndeclared? (cdr env) name)]
-    ;)))
-
 
 ;IsNewLayer? takes in env, returns true if it has a new layer on it, false otherwise
 (define IsNewLayer?
@@ -664,24 +626,16 @@
       [(IsVarUndeclared? env varName) (AddNewBinding env varName varVal)]
       [else (ChangeFirstBinding-Exists env varName varVal)])))
 
-;changes the value of a binding, knowing that the binding exists
-(define ChangeBinding-Exists
-  (lambda (env varName varVal)
-    (cond
-     [(null? env) '()]
-     [(IsNewLayer? env) (cons (ChangeBinding-Exists (GetFirstLayer env) varName varVal) (ChangeBinding-Exists (RemoveLayer env) varName varVal))]
-     [(eq? (GetFirstBindingName env) varName) (ChangeFirstBindingValue env varVal)]
-     [else (cons (GetFirstBinding env) (ChangeBinding-Exists (cdr env) varName varVal))])))
-
 ;only changes the value of the first binding, knowing that the binding exists
 (define ChangeFirstBinding-Exists
   (lambda (env varName varVal)
     (cond
      [(null? env) '()]
-     [(and (IsNewLayer? env) (IsVarUndeclared? (GetFirstLayer env) varName)) (cons (GetFirstLayer env) (ChangeBinding-Exists (RemoveLayer env) varName varVal))]
-     [(IsNewLayer? env) (cons (ChangeBinding-Exists (GetFirstLayer env) varName varVal) (RemoveLayer env))]
+     [(and (IsNewLayer? env) (IsVarUndeclared? (GetFirstLayer env) varName)) (cons (GetFirstLayer env) (ChangeFirstBinding-Exists (RemoveLayer env) varName varVal))]
+     [(IsNewLayer? env) (cons (ChangeFirstBinding-Exists (GetFirstLayer env) varName varVal) (RemoveLayer env))]
      [(eq? (GetFirstBindingName env) varName) (ChangeFirstBindingValue env varVal)]
-     [else (cons (GetFirstBinding env) (ChangeBinding-Exists (cdr env) varName varVal))])))
+     [else (cons (GetFirstBinding env) (ChangeFirstBinding-Exists (cdr env) varName varVal))])))
+
 ;takes in two atoms, returns null if they are both null, or the value of the one that is not null
 (define ResolveMultiLayerSearch
   (lambda(a1 a2)
@@ -700,12 +654,10 @@
       [(eq? (GetFirstBindingName env) varName) (GetFirstBindingValue env)]
       [else (LookupValue (cdr env) varName)])))
 
+;Adds function definition to the environment
 (define AddFunctionDecToEnv
   (lambda(env funcname funcparams funcbody)
     (ChangeBinding env funcname (list funcparams funcbody (lambda(state) (GetFuncLayer funcname state))))))
-
-;(AddNewBinding (cons '() (AddNewBinding '() 'y 2)) 'x 1)
-;(AddNewBinding (cons '() (AddNewBinding (AddNewBinding (cons '() (AddNewBinding '() 'y 2)) 'x 1) 'z 3)) 's 0)
 
 ;returns env where every layer that doesn't have the function is removed until the level of the function is reached
 (define GetFuncLayer
@@ -749,22 +701,18 @@
   (lambda (val)
     (and (list? val) (contains-bool-operator (flatten val)))))
 
+;evaluates the value of a function
 (define M-Function
  (lambda(env func throw)
    (M-FormatFunction (HandleFuncall env func 'val STD_BREAK STD_CONT throw))))
 
+;makes sure that the function returneda value, otherwise throws an error
 (define M-FormatFunction
   (lambda(input)
   (if (or (eq? input 'null))
       (error "function did not resolve to a value" input)
       input)))
 
-;(+ (funcall fib 2 3) 1)
-;(HandleFuncDec '() '(function fib (x y) ((return (* x y)))) #f #f #f #f)
-
-
-;(MV-ResolveFunctions-First (HandleFuncDec '() '(function fib (x y) ((return (* x y)))) #f #f #f #f) '(+ (funcall fib 2 3) 1) #f)
-;shoudl return 
 ;takes in expression and environment, keeps the expression the same except that the functions are resolved to values
 (define MV-ResolveFunctions-First
   (lambda(env exp throw)
@@ -774,9 +722,11 @@
       [(list? (car exp)) (cons (MV-ResolveFunctions-First env (car exp) throw) (MV-ResolveFunctions-First env (cdr exp) throw))]
       [else (cons (car exp) (MV-ResolveFunctions-First env (cdr exp) throw))])))
 
+;returns true if operator is a function call
 (define MV-IsFuncall?
   (lambda(exp)
     (eq? (car exp) 'funcall)))
+
 ;M-Value -> takes in env and a partial statement, ultimately resolves the partial statement down to a value and returns that value could be true, false, or a number
 (define M-Value
   (lambda (env val throw)
@@ -993,6 +943,3 @@
 (list 't18 (eq? (interpret "t18.txt") 125))
 (list 't19 (eq? (interpret "t19.txt") 100))
 (list 't20 (eq? (interpret "t20.txt") 2000400)) 
-; t20 gives an error because the throw continuation throws the M-State from the inside of the function, so a variable is lost and an extra variable is there
-
-;
