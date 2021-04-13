@@ -147,24 +147,27 @@
 (define FC_RunFunction
   (lambda (env statement return break continue throw)
      (call/cc (lambda (return-from-function)
-      (CB_RemoveLayer (step-through-cc (FC_GetFuncBody env (FC_GetFuncName statement)) ;get function body
+      ;(CB_RemoveLayer
+       (step-through-cc (FC_GetFuncBody env (FC_GetFuncName statement)) ;get function body
        ;(begin (display (FC_PrepEnv  (CB_AddLayer (CB_RemoveLayer (FC_GetFuncEnvFunc env (FC_GetFuncName statement)))) (FC_GetFormalParams env (FC_GetFuncName statement)) (FC_ResolveArgs env (FC_GetArgs statement) throw) throw) ; prepare env for function
                       ; )
         (FC_PrepEnv  (FC_GetFuncEnvFunc env (FC_GetFuncName statement)) (FC_GetFormalParams env (FC_GetFuncName statement)) (FC_ResolveArgs env (FC_GetArgs statement) throw) throw) ; prepare env for function
-                       return-from-function STD_BREAK STD_CONT throw))))));pass in continuations
+                       return-from-function STD_BREAK STD_CONT return-from-function)))));pass in continuations
 
 ;checks if it should return the value or the state based one whether return flag is set or if it is a continuation (uses this to tell where it was called from)
 (define FC_CheckReturn
-  (lambda(env return-flag returnval)
-    (if (eq? return-flag 'val)
-    returnval
-    env)))
+  (lambda(env return-flag returnval throw)
+    (cond
+      [(TC_GotThrown? returnval) (HandleThrow env (list 'throw (Throw_GetValue returnval)) throw)]
+      [(eq? return-flag 'val) returnval]
+      [else env]
+    )))
 
 ;HandleFuncall either returns an updated env or the return value depending on the return continuation
 (define HandleFuncall
   (lambda (env statement return break continue throw)
      ; update env if global variables changes
-        (FC_CheckReturn env return (FC_RunFunction env statement return break continue throw))))
+        (FC_CheckReturn env return (FC_RunFunction env statement return break continue throw) throw)))
 
 ;****************************************Handle Code Block**********************************************
 
@@ -199,7 +202,9 @@
 ;calls throw continuation sending current env and thrown value packaged together 
 (define HandleThrow
   (lambda(env statement throw)
-    (throw (list (M-Value env (T_GetBody statement) throw) env))))
+    ;(if (list? throw)
+      ;((car throw) (list (M-Value env (T_GetBody statement) throw) (car (cdr env))))
+      (throw (list (M-Value env (T_GetBody statement) throw) env))))
 
  ;global helper function to get thrown value from throw continuation return
  (define Throw_GetValue
@@ -210,7 +215,7 @@
  (define Throw_GetMState
    (lambda(lis)
    (car (cdr lis))))
-  
+
 ;**************************************TryCatch**************************************
 
 ;returns #t if there is a catch body, false otherwise
@@ -261,6 +266,7 @@
   (lambda(tv)
     (cond
       [(null? tv) #f]
+      [(not (pair? tv)) #f]
       [else (not (list? (car tv)))])))
 
 ;handles the catch block and returns env after completion
@@ -760,7 +766,7 @@
       [(and (list? val) (MV-IsFuncall? val)) (M-Function env val throw)]
       [(list? val) (M-Expression (MV_ConvertVarToVal* env (MV-ResolveFunctions-First env val throw) (MV_ListOfVars (flatten (MV-ResolveFunctions-First env val throw))) throw))] ;Evaluate the expression
       [(custom-bool-literal? val) (ConvertToSchemeBool val)]
-      [(IsVarUndeclared? env val) (error "Undeclared variable!" val)] ;undeclared variable
+      [(IsVarUndeclared? env val) (error "Undeclared variable!" val env)] ;undeclared variable
       [else (LookupValue env val)]))) ;declared variable that needs to be resolved to a value
 
 ;*******************************M_Expression Functions**************************
@@ -945,7 +951,7 @@
       [else (error "Value that is not a bool trying to be converted into a bool!")])))
 
 
-;(interpret "t17.txt")
+(interpret "t20.txt")
 ;Test Cases:
 ;
 (list 't1 (eq? (interpret "t1.txt") 10))
@@ -962,10 +968,11 @@
 ;(list 't12 (eq? (interpret "t12.txt") )) ;should give error --> works
 (list 't13 (eq? (interpret "t13.txt") 90))
 (list 't14 (eq? (interpret "t14.txt") 69))
-(list 't15 (eq? (interpret "t15.txt") 87));wrong answer (-15)
-(list 't16 (eq? (interpret "t16.txt") 64)) ;giving unecessary error
-;(interpret "t17.txt");give error ;wrong answer returning 1
+(list 't15 (eq? (interpret "t15.txt") 87));wrong answer (returning 88)
+(list 't16 (eq? (interpret "t16.txt") 64)) 
+;(interpret "t17.txt");give error --> works
 (list 't18 (eq? (interpret "t18.txt") 125))
 (list 't19 (eq? (interpret "t19.txt") 100))
-(list 't20 (eq? (interpret "t20.txt") 2000400)) ;returning 2000000
+(list 't20 (eq? (interpret "t20.txt") 2000400)) 
+; t20 gives an error because the throw continuation throws the M-State from the inside of the function, so a variable is lost and an extra variable is there
 

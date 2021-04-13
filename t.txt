@@ -1,17 +1,16 @@
-var x = 10;
-
-function f()
+function g(x)
 {
-   return x;
-}
-
-function g()
-{
-   var x = 20;
-   return f();
+	throw x;
 }
   
 function main()
 {
-	return g();
+	try{
+		g(1);
+	}
+	catch(e)
+	{
+		return e;
+	}
+	return -1;
 }
